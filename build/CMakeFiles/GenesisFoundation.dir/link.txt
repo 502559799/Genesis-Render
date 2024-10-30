@@ -1,0 +1,2 @@
+/usr/bin/ar qc libGenesisFoundation.a CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o
+/usr/bin/ranlib libGenesisFoundation.a

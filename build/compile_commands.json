@@ -1,0 +1,57 @@
+[
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -D_CRT_SECURE_NO_WARNINGS -I/Users/bytedance/Workspace/vulkan_renderer/src -I/Users/bytedance/Workspace/vulkan_renderer/src/genesis -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -D_CRT_SECURE_NO_WARNINGS -I/Users/bytedance/Workspace/vulkan_renderer/src -I/Users/bytedance/Workspace/vulkan_renderer/src/genesis -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -D_CRT_SECURE_NO_WARNINGS -I/Users/bytedance/Workspace/vulkan_renderer/src -I/Users/bytedance/Workspace/vulkan_renderer/src/genesis -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build",
+  "command": "/usr/bin/clang -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/opt/homebrew/Cellar/sdl2/2.30.8/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -o CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build/src/demo1",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/. -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/.. -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/../genesis -I/usr/local/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include -isystem /opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp"
+},
+{
+  "directory": "/Users/bytedance/Workspace/vulkan_renderer/build/src/demo1",
+  "command": "/usr/bin/clang++ -DTRACY_ENABLE -DTRACY_NO_SYSTEM_TRACING -DTRACY_ON_DEMAND -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/. -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/.. -I/Users/bytedance/Workspace/vulkan_renderer/src/demo1/../genesis -I/usr/local/include -I/opt/homebrew/Cellar/sdl2/2.30.8/include -isystem /opt/homebrew/Cellar/sdl2/2.30.8/include/SDL2 -g -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX14.2.sdk -std=gnu++17 -o CMakeFiles/DEMO1.dir/main.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp",
+  "file": "/Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp"
+}
+]

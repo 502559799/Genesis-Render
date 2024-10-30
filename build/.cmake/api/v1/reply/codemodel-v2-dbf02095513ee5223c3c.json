@@ -1,0 +1,120 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.24"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3
+					]
+				},
+				{
+					"build" : "src/demo1",
+					"jsonFile" : "directory-src.demo1-Debug-44f9e1a352e13dec0c8b.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.24"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "src/demo1",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "VULKAN_RENDERER",
+					"targetIndexes" : 
+					[
+						1,
+						2,
+						3
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "DEMO1",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "DEMO1::@b0176490c69c0e6592a3",
+					"jsonFile" : "target-DEMO1-Debug-41860ce13799edb12641.json",
+					"name" : "DEMO1",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "GenesisApp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-GenesisApp-Debug-993f01fc62806bbcc966.json",
+					"name" : "GenesisApp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "GenesisExternal::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-GenesisExternal-Debug-c19057263df1a5f6b2ad.json",
+					"name" : "GenesisExternal",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "GenesisFoundation::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-GenesisFoundation-Debug-66426741736a8f85922b.json",
+					"name" : "GenesisFoundation",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/Users/bytedance/Workspace/vulkan_renderer/build",
+		"source" : "/Users/bytedance/Workspace/vulkan_renderer"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 4
+	}
+}
