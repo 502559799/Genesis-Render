@@ -3,17 +3,10 @@
  * @Date: 2024-10-22 19:27:22
  * @Descripttion: 
  * @LastEditors: Yan Dongbao
- * @LastEditTime: 2024-10-30 14:16:13
+ * @LastEditTime: 2024-11-08 20:56:45
  * @version: 
  */
-/*
- * @Author: Yan Dongbao
- * @Date: 2024-10-22 19:27:22
- * @Descripttion: 
- * @LastEditors: Yan Dongbao
- * @LastEditTime: 2024-10-22 19:29:29
- * @version: 
- */
+
 #ifndef __VULKAN_RENDERER_SERVICE_H__
 #define __VULKAN_RENDERER_SERVICE_H__
 
@@ -38,4 +31,4 @@ namespace Genesis
         private: Type() {}
 }
 
-#endif /* __VULKAN_RENDERER_SERVICE_H__ */
+#endif // __VULKAN_RENDERER_SERVICE_H__

@@ -3,7 +3,7 @@
  * @Date: 2024-10-22 20:59:23
  * @Descripttion:
  * @LastEditors: Yan Dongbao
- * @LastEditTime: 2024-10-30 14:21:55
+ * @LastEditTime: 2024-10-30 21:10:54
  * @version:
  */
 #ifndef __VULKAN_RENDERER_MEMORY_H__
@@ -21,6 +21,7 @@ namespace Genesis
 #define GenesisAlloc(size, allocator) (allocator)->allocate(size, 1, __FILE__, __LINE__)
 #define GenesisAllocAlign(size, alignment, allocator) (allocator)->allocate(size, alignment, __FILE__, __LINE__)
 #define GenesisDealloc(ptr, allocator) (allocator)->deallocate(ptr)
+
 
     void memory_copy(void *dst, void *src, size_t size);
     size_t memory_align(size_t size, size_t alignment);

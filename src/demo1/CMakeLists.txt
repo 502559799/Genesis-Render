@@ -1,8 +1,17 @@
 project(DEMO1)
 
+
+if (VULKAN_DEBUG_REPORT)
+    add_definitions(-DVULKAN_DEBUG_REPORT)
+endif()
+
 add_executable(DEMO1 
 graphics/genesis_imgui.hpp
 graphics/genesis_imgui.cpp
+graphics/gpu_device.hpp
+graphics/gpu_device.cpp
+graphics/gpu_resources.hpp
+graphics/gpu_enum.hpp
 main.cpp)
 
 set_property(TARGET DEMO1 PROPERTY CXX_STANDARD 17)

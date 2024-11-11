@@ -1,3 +1,11 @@
+/*
+ * @Author: Yan Dongbao
+ * @Date: 2024-10-23 21:17:37
+ * @Descripttion: 
+ * @LastEditors: Yan Dongbao
+ * @LastEditTime: 2024-10-30 16:28:54
+ * @version: 
+ */
 #ifndef __VULKAN_RENDERER_LOG_H__
 #define __VULKAN_RENDERER_LOG_H__
 
@@ -17,6 +25,8 @@ namespace Genesis
         void format_print(const char *format, ...);
 
         static constexpr const char *name_{"Genesis_Log_Services"};
+
+        GENESIS_SINGLETON_CLASS(LogService);
 
     private:
         LogCallback callback_ = nullptr;

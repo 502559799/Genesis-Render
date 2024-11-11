@@ -10,8 +10,14 @@ endif()
 add_library(GenesisFoundation STATIC
     src/genesis/foundation_layer/platform.hpp
     src/genesis/foundation_layer/service.hpp
+    src/genesis/foundation_layer/serviceManager.hpp
+    src/genesis/foundation_layer/serviceManager.cpp
+    src/genesis/foundation_layer/serialization_blob.hpp
+    src/genesis/foundation_layer/serialization_blob.cpp
     src/genesis/foundation_layer/log.hpp
     src/genesis/foundation_layer/log.cpp
+    src/genesis/foundation_layer/file.hpp
+    src/genesis/foundation_layer/file.cpp
     src/genesis/foundation_layer/assert.hpp
     src/genesis/foundation_layer/array.hpp
     src/genesis/foundation_layer/memory.hpp
