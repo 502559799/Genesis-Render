@@ -15,9 +15,12 @@
 
 #include <utility>
 #include <vector>
+#include <vulkan/vulkan.h>
 
 namespace Genesis
 {
+    static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+
     struct DeviceCreateInfo
     {
         Allocator *m_allocator = nullptr;
@@ -47,6 +50,16 @@ namespace Genesis
         GENESIS_DECLARE_SERVICE(GpuDevice);
 
         void init(const DeviceCreateInfo &config);
+        void shutdown();
+
+        void beginFrame();
+        void endFrame();
+
+        VkRenderPass getRenderPass() const { return vk_render_pass_; }
+        VkCommandBuffer getCurrentCommandBuffer() const { return command_buffers_[image_index_]; }
+        uint32_t getCurrentFrame() const { return current_frame_; }
+        VkDevice getDevice() const { return vk_device_; }
+        VkPhysicalDevice getPhysicalDevice() const { return vk_physical_device_; }
 
         /*resources create & destroy*/
         // Buffer
@@ -62,15 +75,57 @@ namespace Genesis
         ShaderStateHandle createShaderState(const ShaderStateCreateInfo &desc);
         void destroyShaderState(ShaderStateHandle handle);
 
+        void initImgui();
+
     private:
         VkResult createVulkanInstance(const void *pNext = nullptr, VkInstanceCreateFlags flags = 0);
         VkResult checkInstanceExtensionSupport(const std::vector<const char *> &extensions);
 
+        void createSwapchain();
+        void createRenderPass();
+        void createFramebuffers();
+        void createCommandPool();
+        void createDescriptorPool();
+        void createSyncObjects();
+
+        VkCommandBuffer beginSingleTimeCommands();
+        void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+
     private:
         Allocator *allocator_ = nullptr;
+        void *window_ = nullptr;
+        uint32_t window_width_ = 0;
+        uint32_t window_height_ = 0;
         VkAllocationCallbacks *vk_allocation_callbacks_ = nullptr;
 
-        VkInstance vk_instance_;
+        VkInstance vk_instance_ = VK_NULL_HANDLE;
+        VkSurfaceKHR vk_surface_ = VK_NULL_HANDLE;
+        VkPhysicalDevice vk_physical_device_ = VK_NULL_HANDLE;
+        VkDevice vk_device_ = VK_NULL_HANDLE;
+        VkQueue vk_graphics_queue_ = VK_NULL_HANDLE;
+
+        VkSwapchainKHR vk_swapchain_ = VK_NULL_HANDLE;
+        std::vector<VkImage> swapchain_images_;
+        std::vector<VkImageView> swapchain_image_views_;
+        VkFormat swapchain_image_format_;
+        VkExtent2D swapchain_extent_;
+
+        VkRenderPass vk_render_pass_ = VK_NULL_HANDLE;
+        std::vector<VkFramebuffer> swapchain_framebuffers_;
+
+        VkCommandPool vk_command_pool_ = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> command_buffers_;
+
+        VkDescriptorPool vk_descriptor_pool_ = VK_NULL_HANDLE;
+
+        std::vector<VkSemaphore> image_available_semaphores_;
+        std::vector<VkSemaphore> render_finished_semaphores_;
+        std::vector<VkFence> in_flight_fences_;
+
+        uint32_t current_frame_ = 0;
+        uint32_t image_index_ = 0;
+
+        uint32_t graphics_queue_family_ = UINT32_MAX;
 
         std::vector<const char *> instance_layers_;
         std::vector<const char *> instance_extensions_;

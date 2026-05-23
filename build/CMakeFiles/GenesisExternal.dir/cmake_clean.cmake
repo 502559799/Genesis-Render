@@ -5,6 +5,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o.d"
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o"
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o.d"
+  "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o"
+  "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o.d"
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o"
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o.d"
   "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o"

@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp" "CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o" "gcc" "CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o.d"
+  "/Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/application_layer/window.cpp" "CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o" "gcc" "CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o.d"
   )
 
 # Targets to which this target links.

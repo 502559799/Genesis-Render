@@ -57,10 +57,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles /Users/bytedance/Workspace/vulkan_renderer/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles /Users/bytedance/.openclaw/workspace/Genesis-Render/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -240,6 +240,30 @@ src/external/imgui/imgui_impl_sdl.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisExternal.dir/build.make CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.s
 .PHONY : src/external/imgui/imgui_impl_sdl.cpp.s
 
+src/external/imgui/imgui_impl_vulkan.o: src/external/imgui/imgui_impl_vulkan.cpp.o
+.PHONY : src/external/imgui/imgui_impl_vulkan.o
+
+# target to build an object file
+src/external/imgui/imgui_impl_vulkan.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisExternal.dir/build.make CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o
+.PHONY : src/external/imgui/imgui_impl_vulkan.cpp.o
+
+src/external/imgui/imgui_impl_vulkan.i: src/external/imgui/imgui_impl_vulkan.cpp.i
+.PHONY : src/external/imgui/imgui_impl_vulkan.i
+
+# target to preprocess a source file
+src/external/imgui/imgui_impl_vulkan.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisExternal.dir/build.make CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.i
+.PHONY : src/external/imgui/imgui_impl_vulkan.cpp.i
+
+src/external/imgui/imgui_impl_vulkan.s: src/external/imgui/imgui_impl_vulkan.cpp.s
+.PHONY : src/external/imgui/imgui_impl_vulkan.s
+
+# target to generate assembly for a file
+src/external/imgui/imgui_impl_vulkan.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisExternal.dir/build.make CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.s
+.PHONY : src/external/imgui/imgui_impl_vulkan.cpp.s
+
 src/external/imgui/imgui_tables.o: src/external/imgui/imgui_tables.cpp.o
 .PHONY : src/external/imgui/imgui_tables.o
 
@@ -336,6 +360,30 @@ src/genesis/application_layer/window.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisApp.dir/build.make CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.s
 .PHONY : src/genesis/application_layer/window.cpp.s
 
+src/genesis/foundation_layer/file.o: src/genesis/foundation_layer/file.cpp.o
+.PHONY : src/genesis/foundation_layer/file.o
+
+# target to build an object file
+src/genesis/foundation_layer/file.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o
+.PHONY : src/genesis/foundation_layer/file.cpp.o
+
+src/genesis/foundation_layer/file.i: src/genesis/foundation_layer/file.cpp.i
+.PHONY : src/genesis/foundation_layer/file.i
+
+# target to preprocess a source file
+src/genesis/foundation_layer/file.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.i
+.PHONY : src/genesis/foundation_layer/file.cpp.i
+
+src/genesis/foundation_layer/file.s: src/genesis/foundation_layer/file.cpp.s
+.PHONY : src/genesis/foundation_layer/file.s
+
+# target to generate assembly for a file
+src/genesis/foundation_layer/file.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.s
+.PHONY : src/genesis/foundation_layer/file.cpp.s
+
 src/genesis/foundation_layer/log.o: src/genesis/foundation_layer/log.cpp.o
 .PHONY : src/genesis/foundation_layer/log.o
 
@@ -384,6 +432,54 @@ src/genesis/foundation_layer/memory.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.s
 .PHONY : src/genesis/foundation_layer/memory.cpp.s
 
+src/genesis/foundation_layer/serialization_blob.o: src/genesis/foundation_layer/serialization_blob.cpp.o
+.PHONY : src/genesis/foundation_layer/serialization_blob.o
+
+# target to build an object file
+src/genesis/foundation_layer/serialization_blob.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o
+.PHONY : src/genesis/foundation_layer/serialization_blob.cpp.o
+
+src/genesis/foundation_layer/serialization_blob.i: src/genesis/foundation_layer/serialization_blob.cpp.i
+.PHONY : src/genesis/foundation_layer/serialization_blob.i
+
+# target to preprocess a source file
+src/genesis/foundation_layer/serialization_blob.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.i
+.PHONY : src/genesis/foundation_layer/serialization_blob.cpp.i
+
+src/genesis/foundation_layer/serialization_blob.s: src/genesis/foundation_layer/serialization_blob.cpp.s
+.PHONY : src/genesis/foundation_layer/serialization_blob.s
+
+# target to generate assembly for a file
+src/genesis/foundation_layer/serialization_blob.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.s
+.PHONY : src/genesis/foundation_layer/serialization_blob.cpp.s
+
+src/genesis/foundation_layer/serviceManager.o: src/genesis/foundation_layer/serviceManager.cpp.o
+.PHONY : src/genesis/foundation_layer/serviceManager.o
+
+# target to build an object file
+src/genesis/foundation_layer/serviceManager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o
+.PHONY : src/genesis/foundation_layer/serviceManager.cpp.o
+
+src/genesis/foundation_layer/serviceManager.i: src/genesis/foundation_layer/serviceManager.cpp.i
+.PHONY : src/genesis/foundation_layer/serviceManager.i
+
+# target to preprocess a source file
+src/genesis/foundation_layer/serviceManager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.i
+.PHONY : src/genesis/foundation_layer/serviceManager.cpp.i
+
+src/genesis/foundation_layer/serviceManager.s: src/genesis/foundation_layer/serviceManager.cpp.s
+.PHONY : src/genesis/foundation_layer/serviceManager.s
+
+# target to generate assembly for a file
+src/genesis/foundation_layer/serviceManager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/GenesisFoundation.dir/build.make CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.s
+.PHONY : src/genesis/foundation_layer/serviceManager.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -405,6 +501,9 @@ help:
 	@echo "... src/external/imgui/imgui_impl_sdl.o"
 	@echo "... src/external/imgui/imgui_impl_sdl.i"
 	@echo "... src/external/imgui/imgui_impl_sdl.s"
+	@echo "... src/external/imgui/imgui_impl_vulkan.o"
+	@echo "... src/external/imgui/imgui_impl_vulkan.i"
+	@echo "... src/external/imgui/imgui_impl_vulkan.s"
 	@echo "... src/external/imgui/imgui_tables.o"
 	@echo "... src/external/imgui/imgui_tables.i"
 	@echo "... src/external/imgui/imgui_tables.s"
@@ -417,12 +516,21 @@ help:
 	@echo "... src/genesis/application_layer/window.o"
 	@echo "... src/genesis/application_layer/window.i"
 	@echo "... src/genesis/application_layer/window.s"
+	@echo "... src/genesis/foundation_layer/file.o"
+	@echo "... src/genesis/foundation_layer/file.i"
+	@echo "... src/genesis/foundation_layer/file.s"
 	@echo "... src/genesis/foundation_layer/log.o"
 	@echo "... src/genesis/foundation_layer/log.i"
 	@echo "... src/genesis/foundation_layer/log.s"
 	@echo "... src/genesis/foundation_layer/memory.o"
 	@echo "... src/genesis/foundation_layer/memory.i"
 	@echo "... src/genesis/foundation_layer/memory.s"
+	@echo "... src/genesis/foundation_layer/serialization_blob.o"
+	@echo "... src/genesis/foundation_layer/serialization_blob.i"
+	@echo "... src/genesis/foundation_layer/serialization_blob.s"
+	@echo "... src/genesis/foundation_layer/serviceManager.o"
+	@echo "... src/genesis/foundation_layer/serviceManager.i"
+	@echo "... src/genesis/foundation_layer/serviceManager.s"
 .PHONY : help
 
 

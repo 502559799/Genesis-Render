@@ -67,6 +67,8 @@ ${SDL2_INCLUDE_DIRS})
 add_library(GenesisExternal STATIC
     src/external/imgui/imgui_impl_sdl.cpp
     src/external/imgui/imgui_impl_sdl.h
+    src/external/imgui/imgui_impl_vulkan.cpp
+    src/external/imgui/imgui_impl_vulkan.h
     src/external/imgui/imgui.cpp
     src/external/imgui/imgui.h
     src/external/imgui/imgui_draw.cpp
@@ -82,7 +84,8 @@ target_compile_definitions(GenesisExternal PRIVATE
 )
 
 target_include_directories(GenesisExternal PRIVATE
-${SDL2_INCLUDE_DIRS})
+    ${SDL2_INCLUDE_DIRS}
+    ${Vulkan_INCLUDE_DIRS})
 
 set_property(TARGET GenesisExternal PROPERTY CXX_STANDARD 17)
 

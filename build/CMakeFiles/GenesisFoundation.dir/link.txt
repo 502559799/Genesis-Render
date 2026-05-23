@@ -1,2 +1,2 @@
-/usr/bin/ar qc libGenesisFoundation.a CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o
-/usr/bin/ranlib libGenesisFoundation.a
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libGenesisFoundation.a CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libGenesisFoundation.a

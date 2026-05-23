@@ -53,10 +53,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/GenesisFoundation.dir/depend.make
@@ -69,47 +69,95 @@ include CMakeFiles/GenesisFoundation.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/GenesisFoundation.dir/flags.make
 
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o: CMakeFiles/GenesisFoundation.dir/flags.make
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serviceManager.cpp
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o: CMakeFiles/GenesisFoundation.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serviceManager.cpp
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serviceManager.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.i
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serviceManager.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.s
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o: CMakeFiles/GenesisFoundation.dir/flags.make
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serialization_blob.cpp
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o: CMakeFiles/GenesisFoundation.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serialization_blob.cpp
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serialization_blob.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.i
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/serialization_blob.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.s
+
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o: CMakeFiles/GenesisFoundation.dir/flags.make
-CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/log.cpp
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o: CMakeFiles/GenesisFoundation.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/log.cpp
 
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/log.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.i
 
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/log.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/log.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.s
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o: CMakeFiles/GenesisFoundation.dir/flags.make
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/file.cpp
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o: CMakeFiles/GenesisFoundation.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/file.cpp
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/file.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.i
+
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/file.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.s
 
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o: CMakeFiles/GenesisFoundation.dir/flags.make
-CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp
+CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/memory.cpp
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o: CMakeFiles/GenesisFoundation.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o -MF CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o.d -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/memory.cpp
 
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/memory.cpp > CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.i
 
 CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/genesis/foundation_layer/memory.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/foundation_layer/memory.cpp -o CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.s
 
 # Object files for target GenesisFoundation
 GenesisFoundation_OBJECTS = \
+"CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o" \
+"CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o" \
 "CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o" \
+"CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o" \
 "CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o"
 
 # External object files for target GenesisFoundation
 GenesisFoundation_EXTERNAL_OBJECTS =
 
+libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serviceManager.cpp.o
+libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/serialization_blob.cpp.o
 libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/log.cpp.o
+libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/file.cpp.o
 libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/src/genesis/foundation_layer/memory.cpp.o
 libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/build.make
 libGenesisFoundation.a: CMakeFiles/GenesisFoundation.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX static library libGenesisFoundation.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX static library libGenesisFoundation.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/GenesisFoundation.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/GenesisFoundation.dir/link.txt --verbose=$(VERBOSE)
 
@@ -122,6 +170,6 @@ CMakeFiles/GenesisFoundation.dir/clean:
 .PHONY : CMakeFiles/GenesisFoundation.dir/clean
 
 CMakeFiles/GenesisFoundation.dir/depend:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles/GenesisFoundation.dir/DependInfo.cmake --color=$(COLOR)
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisFoundation.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/GenesisFoundation.dir/depend
 

@@ -53,10 +53,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/GenesisApp.dir/depend.make
@@ -70,18 +70,18 @@ include CMakeFiles/GenesisApp.dir/progress.make
 include CMakeFiles/GenesisApp.dir/flags.make
 
 CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o: CMakeFiles/GenesisApp.dir/flags.make
-CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp
+CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/application_layer/window.cpp
 CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o: CMakeFiles/GenesisApp.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o -MF CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o.d -o CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o -MF CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o.d -o CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/application_layer/window.cpp
 
 CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp > CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/application_layer/window.cpp > CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.i
 
 CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/genesis/application_layer/window.cpp -o CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/genesis/application_layer/window.cpp -o CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.s
 
 # Object files for target GenesisApp
 GenesisApp_OBJECTS = \
@@ -93,7 +93,7 @@ GenesisApp_EXTERNAL_OBJECTS =
 libGenesisApp.a: CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o
 libGenesisApp.a: CMakeFiles/GenesisApp.dir/build.make
 libGenesisApp.a: CMakeFiles/GenesisApp.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libGenesisApp.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libGenesisApp.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/GenesisApp.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/GenesisApp.dir/link.txt --verbose=$(VERBOSE)
 
@@ -106,6 +106,6 @@ CMakeFiles/GenesisApp.dir/clean:
 .PHONY : CMakeFiles/GenesisApp.dir/clean
 
 CMakeFiles/GenesisApp.dir/depend:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles/GenesisApp.dir/DependInfo.cmake --color=$(COLOR)
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisApp.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/GenesisApp.dir/depend
 

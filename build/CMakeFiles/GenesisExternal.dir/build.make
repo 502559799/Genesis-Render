@@ -53,10 +53,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/GenesisExternal.dir/depend.make
@@ -70,92 +70,107 @@ include CMakeFiles/GenesisExternal.dir/progress.make
 include CMakeFiles/GenesisExternal.dir/flags.make
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_sdl.cpp
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_sdl.cpp
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_sdl.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.i
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_impl_sdl.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_sdl.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.s
+
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_vulkan.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_vulkan.cpp
+
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_vulkan.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.i
+
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_impl_vulkan.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.s
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui.cpp
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui.cpp
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.i
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.s
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_draw.cpp
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_draw.cpp
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_draw.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.i
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_draw.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_draw.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.s
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_tables.cpp
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_tables.cpp
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_tables.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.i
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_tables.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_tables.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.s
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp
+CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_widgets.cpp
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o -MF CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o.d -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_widgets.cpp
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.i"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_widgets.cpp > CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.i
 
 CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.s"
-	/usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/imgui/imgui_widgets.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/imgui/imgui_widgets.cpp -o CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_widgets.cpp.s
 
 CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o: CMakeFiles/GenesisExternal.dir/flags.make
-CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o: /Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c
+CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/tlsf.c
 CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o: CMakeFiles/GenesisExternal.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o"
-	/usr/bin/clang $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o -MF CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o.d -o CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o -c /Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o -MF CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o.d -o CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/tlsf.c
 
 CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.i"
-	/usr/bin/clang $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c > CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.i
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/tlsf.c > CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.i
 
 CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.s"
-	/usr/bin/clang $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/external/tlsf.c -o CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.s
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/external/tlsf.c -o CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.s
 
 # Object files for target GenesisExternal
 GenesisExternal_OBJECTS = \
 "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o" \
+"CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o" \
 "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o" \
 "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o" \
 "CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o" \
@@ -166,6 +181,7 @@ GenesisExternal_OBJECTS = \
 GenesisExternal_EXTERNAL_OBJECTS =
 
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_sdl.cpp.o
+libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_impl_vulkan.cpp.o
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui.cpp.o
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_draw.cpp.o
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_tables.cpp.o
@@ -173,7 +189,7 @@ libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/imgui/imgui_wi
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/src/external/tlsf.c.o
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/build.make
 libGenesisExternal.a: CMakeFiles/GenesisExternal.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX static library libGenesisExternal.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Linking CXX static library libGenesisExternal.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/GenesisExternal.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/GenesisExternal.dir/link.txt --verbose=$(VERBOSE)
 
@@ -186,6 +202,6 @@ CMakeFiles/GenesisExternal.dir/clean:
 .PHONY : CMakeFiles/GenesisExternal.dir/clean
 
 CMakeFiles/GenesisExternal.dir/depend:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles/GenesisExternal.dir/DependInfo.cmake --color=$(COLOR)
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisExternal.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/GenesisExternal.dir/depend
 

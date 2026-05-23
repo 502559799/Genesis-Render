@@ -1,2 +1,2 @@
-/usr/bin/ar qc libGenesisApp.a CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o
-/usr/bin/ranlib libGenesisApp.a
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libGenesisApp.a CMakeFiles/GenesisApp.dir/src/genesis/application_layer/window.cpp.o
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libGenesisApp.a

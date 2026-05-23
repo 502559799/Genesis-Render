@@ -53,10 +53,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 # Include any dependencies generated for this target.
 include src/demo1/CMakeFiles/DEMO1.dir/depend.make
@@ -70,62 +70,110 @@ include src/demo1/CMakeFiles/DEMO1.dir/progress.make
 include src/demo1/CMakeFiles/DEMO1.dir/flags.make
 
 src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/flags.make
-src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp
+src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp
 src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o -MF CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o.d -o CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o -MF CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o.d -o CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp
 
 src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp > CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp > CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i
 
 src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/demo1/graphics/genesis_imgui.cpp -o CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp -o CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s
+
+src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/flags.make
+src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp
+src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o -MF CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o.d -o CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp
+
+src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.i"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp > CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.i
+
+src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.s"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp -o CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.s
+
+src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o: src/demo1/CMakeFiles/DEMO1.dir/flags.make
+src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm
+src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o: src/demo1/CMakeFiles/DEMO1.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building OBJCXX object src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ $(OBJCXX_DEFINES) $(OBJCXX_INCLUDES) -x objective-c++ $(OBJCXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o -MF CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o.d -o CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm
+
+src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing OBJCXX source to CMakeFiles/DEMO1.dir/camera/camera_capture.mm.i"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ $(OBJCXX_DEFINES) $(OBJCXX_INCLUDES) $(OBJCXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm > CMakeFiles/DEMO1.dir/camera/camera_capture.mm.i
+
+src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling OBJCXX source to assembly CMakeFiles/DEMO1.dir/camera/camera_capture.mm.s"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++ $(OBJCXX_DEFINES) $(OBJCXX_INCLUDES) $(OBJCXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm -o CMakeFiles/DEMO1.dir/camera/camera_capture.mm.s
+
+src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/flags.make
+src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp
+src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o -MF CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o.d -o CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp
+
+src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/DEMO1.dir/filter/filter_system.cpp.i"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp > CMakeFiles/DEMO1.dir/filter/filter_system.cpp.i
+
+src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/DEMO1.dir/filter/filter_system.cpp.s"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp -o CMakeFiles/DEMO1.dir/filter/filter_system.cpp.s
 
 src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/flags.make
-src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o: /Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp
+src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o: /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp
 src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o: src/demo1/CMakeFiles/DEMO1.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o -MF CMakeFiles/DEMO1.dir/main.cpp.o.d -o CMakeFiles/DEMO1.dir/main.cpp.o -c /Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o -MF CMakeFiles/DEMO1.dir/main.cpp.o.d -o CMakeFiles/DEMO1.dir/main.cpp.o -c /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp
 
 src/demo1/CMakeFiles/DEMO1.dir/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/DEMO1.dir/main.cpp.i"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp > CMakeFiles/DEMO1.dir/main.cpp.i
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp > CMakeFiles/DEMO1.dir/main.cpp.i
 
 src/demo1/CMakeFiles/DEMO1.dir/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/DEMO1.dir/main.cpp.s"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && /usr/bin/clang++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/Workspace/vulkan_renderer/src/demo1/main.cpp -o CMakeFiles/DEMO1.dir/main.cpp.s
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp -o CMakeFiles/DEMO1.dir/main.cpp.s
 
 # Object files for target DEMO1
 DEMO1_OBJECTS = \
 "CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o" \
+"CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o" \
+"CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o" \
+"CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o" \
 "CMakeFiles/DEMO1.dir/main.cpp.o"
 
 # External object files for target DEMO1
 DEMO1_EXTERNAL_OBJECTS =
 
 src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o
+src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o
+src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o
+src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o
 src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o
 src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/build.make
 src/demo1/DEMO1: libGenesisFoundation.a
 src/demo1/DEMO1: libGenesisExternal.a
 src/demo1/DEMO1: libGenesisApp.a
 src/demo1/DEMO1: /usr/local/lib/libvulkan.dylib
-src/demo1/DEMO1: /opt/homebrew/Cellar/sdl2/2.30.8/lib/libSDL2.dylib
+src/demo1/DEMO1: /opt/homebrew/Cellar/sdl2/2.32.6/lib/libSDL2.dylib
 src/demo1/DEMO1: src/demo1/CMakeFiles/DEMO1.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable DEMO1"
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/DEMO1.dir/link.txt --verbose=$(VERBOSE)
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX executable DEMO1"
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/DEMO1.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
 src/demo1/CMakeFiles/DEMO1.dir/build: src/demo1/DEMO1
 .PHONY : src/demo1/CMakeFiles/DEMO1.dir/build
 
 src/demo1/CMakeFiles/DEMO1.dir/clean:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 && $(CMAKE_COMMAND) -P CMakeFiles/DEMO1.dir/cmake_clean.cmake
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 && $(CMAKE_COMMAND) -P CMakeFiles/DEMO1.dir/cmake_clean.cmake
 .PHONY : src/demo1/CMakeFiles/DEMO1.dir/clean
 
 src/demo1/CMakeFiles/DEMO1.dir/depend:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/Workspace/vulkan_renderer /Users/bytedance/Workspace/vulkan_renderer/src/demo1 /Users/bytedance/Workspace/vulkan_renderer/build /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1 /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1/CMakeFiles/DEMO1.dir/DependInfo.cmake --color=$(COLOR)
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /Users/bytedance/.openclaw/workspace/Genesis-Render /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1 /Users/bytedance/.openclaw/workspace/Genesis-Render/build /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1 /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1/CMakeFiles/DEMO1.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : src/demo1/CMakeFiles/DEMO1.dir/depend
 

@@ -57,10 +57,10 @@ RM = /opt/homebrew/Cellar/cmake/3.24.2/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /Users/bytedance/Workspace/vulkan_renderer
+CMAKE_SOURCE_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /Users/bytedance/Workspace/vulkan_renderer/build
+CMAKE_BINARY_DIR = /Users/bytedance/.openclaw/workspace/Genesis-Render/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,14 +87,14 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles /Users/bytedance/Workspace/vulkan_renderer/build/src/demo1//CMakeFiles/progress.marks
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/Workspace/vulkan_renderer/build/CMakeFiles 0
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles /Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1//CMakeFiles/progress.marks
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/clean
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/clean
 .PHONY : clean
 
 # The main clean target
@@ -103,22 +103,22 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/preinstall
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/preinstall
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/preinstall
 .PHONY : preinstall/fast
 
 # clear depends
 depend:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
 # Convenience name for target.
 src/demo1/CMakeFiles/DEMO1.dir/rule:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/CMakeFiles/DEMO1.dir/rule
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/demo1/CMakeFiles/DEMO1.dir/rule
 .PHONY : src/demo1/CMakeFiles/DEMO1.dir/rule
 
 # Convenience name for target.
@@ -127,15 +127,47 @@ DEMO1: src/demo1/CMakeFiles/DEMO1.dir/rule
 
 # fast build rule for target.
 DEMO1/fast:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/build
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/build
 .PHONY : DEMO1/fast
+
+camera/camera_capture.o: camera/camera_capture.mm.o
+.PHONY : camera/camera_capture.o
+
+# target to build an object file
+camera/camera_capture.mm.o:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/camera/camera_capture.mm.o
+.PHONY : camera/camera_capture.mm.o
+
+filter/filter_system.o: filter/filter_system.cpp.o
+.PHONY : filter/filter_system.o
+
+# target to build an object file
+filter/filter_system.cpp.o:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.o
+.PHONY : filter/filter_system.cpp.o
+
+filter/filter_system.i: filter/filter_system.cpp.i
+.PHONY : filter/filter_system.i
+
+# target to preprocess a source file
+filter/filter_system.cpp.i:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.i
+.PHONY : filter/filter_system.cpp.i
+
+filter/filter_system.s: filter/filter_system.cpp.s
+.PHONY : filter/filter_system.s
+
+# target to generate assembly for a file
+filter/filter_system.cpp.s:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/filter/filter_system.cpp.s
+.PHONY : filter/filter_system.cpp.s
 
 graphics/genesis_imgui.o: graphics/genesis_imgui.cpp.o
 .PHONY : graphics/genesis_imgui.o
 
 # target to build an object file
 graphics/genesis_imgui.cpp.o:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.o
 .PHONY : graphics/genesis_imgui.cpp.o
 
 graphics/genesis_imgui.i: graphics/genesis_imgui.cpp.i
@@ -143,7 +175,7 @@ graphics/genesis_imgui.i: graphics/genesis_imgui.cpp.i
 
 # target to preprocess a source file
 graphics/genesis_imgui.cpp.i:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.i
 .PHONY : graphics/genesis_imgui.cpp.i
 
 graphics/genesis_imgui.s: graphics/genesis_imgui.cpp.s
@@ -151,15 +183,39 @@ graphics/genesis_imgui.s: graphics/genesis_imgui.cpp.s
 
 # target to generate assembly for a file
 graphics/genesis_imgui.cpp.s:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/genesis_imgui.cpp.s
 .PHONY : graphics/genesis_imgui.cpp.s
+
+graphics/gpu_device.o: graphics/gpu_device.cpp.o
+.PHONY : graphics/gpu_device.o
+
+# target to build an object file
+graphics/gpu_device.cpp.o:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.o
+.PHONY : graphics/gpu_device.cpp.o
+
+graphics/gpu_device.i: graphics/gpu_device.cpp.i
+.PHONY : graphics/gpu_device.i
+
+# target to preprocess a source file
+graphics/gpu_device.cpp.i:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.i
+.PHONY : graphics/gpu_device.cpp.i
+
+graphics/gpu_device.s: graphics/gpu_device.cpp.s
+.PHONY : graphics/gpu_device.s
+
+# target to generate assembly for a file
+graphics/gpu_device.cpp.s:
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/graphics/gpu_device.cpp.s
+.PHONY : graphics/gpu_device.cpp.s
 
 main.o: main.cpp.o
 .PHONY : main.o
 
 # target to build an object file
 main.cpp.o:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.o
 .PHONY : main.cpp.o
 
 main.i: main.cpp.i
@@ -167,7 +223,7 @@ main.i: main.cpp.i
 
 # target to preprocess a source file
 main.cpp.i:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.i
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.i
 .PHONY : main.cpp.i
 
 main.s: main.cpp.s
@@ -175,7 +231,7 @@ main.s: main.cpp.s
 
 # target to generate assembly for a file
 main.cpp.s:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.s
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(MAKE) $(MAKESILENT) -f src/demo1/CMakeFiles/DEMO1.dir/build.make src/demo1/CMakeFiles/DEMO1.dir/main.cpp.s
 .PHONY : main.cpp.s
 
 # Help Target
@@ -187,9 +243,16 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... DEMO1"
+	@echo "... camera/camera_capture.o"
+	@echo "... filter/filter_system.o"
+	@echo "... filter/filter_system.i"
+	@echo "... filter/filter_system.s"
 	@echo "... graphics/genesis_imgui.o"
 	@echo "... graphics/genesis_imgui.i"
 	@echo "... graphics/genesis_imgui.s"
+	@echo "... graphics/gpu_device.o"
+	@echo "... graphics/gpu_device.i"
+	@echo "... graphics/gpu_device.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
@@ -204,6 +267,6 @@ help:
 # No rule that depends on this can have commands that come from listfiles
 # because they might be regenerated.
 cmake_check_build_system:
-	cd /Users/bytedance/Workspace/vulkan_renderer/build && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
+	cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
 .PHONY : cmake_check_build_system
 
