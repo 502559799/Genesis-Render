@@ -1,0 +1,12 @@
+Target dependency graph (5 targets)
+Target 'DEMO1' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'GenesisFoundation' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'GenesisApp' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'GenesisExternal' in project 'VULKAN_RENDERER'
+Target 'GenesisExternal' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'ZERO_CHECK' in project 'VULKAN_RENDERER'
+Target 'GenesisApp' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'ZERO_CHECK' in project 'VULKAN_RENDERER'
+Target 'GenesisFoundation' in project 'VULKAN_RENDERER'
+➜ Explicit dependency on target 'ZERO_CHECK' in project 'VULKAN_RENDERER'
+Target 'ZERO_CHECK' in project 'VULKAN_RENDERER' (no dependencies)

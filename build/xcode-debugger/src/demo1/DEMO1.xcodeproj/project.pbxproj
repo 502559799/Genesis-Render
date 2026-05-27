@@ -1,0 +1,772 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXAggregateTarget section */
+		5B10BD8B372347D28ED7EF52 /* ZERO_CHECK */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = F6676072079D4239AA4492C8 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */;
+			buildPhases = (
+				A04B6B1268609DEBFC650AC6 /* Generate CMakeFiles/ZERO_CHECK */,
+			);
+			dependencies = (
+			);
+			name = ZERO_CHECK;
+			productName = ZERO_CHECK;
+		};
+		B9F46D8ABBCD48079B558273 /* ALL_BUILD */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = AD60CA638565410FA789CEBE /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */;
+			buildPhases = (
+				CA4055EC1BC1520974A12DBF /* Generate CMakeFiles/ALL_BUILD */,
+			);
+			dependencies = (
+				F999F60E2487471F8E7E7924 /* PBXTargetDependency */,
+				CD9A05E383F64F7C8FA71B13 /* PBXTargetDependency */,
+			);
+			name = ALL_BUILD;
+			productName = ALL_BUILD;
+		};
+/* End PBXAggregateTarget section */
+
+/* Begin PBXBuildFile section */
+		0AA1C1A8A21E47A184BEEC4B /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp */ = {isa = PBXBuildFile; fileRef = CDC5160793104EAC9C340167 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp */; };
+		29E219EC3E8B4ED5BA4FDB85 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_resources.hpp */ = {isa = PBXBuildFile; fileRef = 5BBF1A88EB4449B7813BB828 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_resources.hpp */; };
+		51B37CE8EE944C199C25FC7F /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.h */ = {isa = PBXBuildFile; fileRef = B2B3763E94254B9593211977 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.h */; };
+		6335EFA676B2428FADF7A99D /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.hpp */ = {isa = PBXBuildFile; fileRef = 766462444CBE4385872107AB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.hpp */; };
+		670CE04D6E624857A0A87DA4 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_enum.hpp */ = {isa = PBXBuildFile; fileRef = D1C7D4DD02234B3798A6E84F /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_enum.hpp */; };
+		7C3F96BA80184676A496CBF6 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp */ = {isa = PBXBuildFile; fileRef = 1F7E9A2C9EC94906B2ACC9DA /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp */; };
+		8348D58871DF42E18746DD30 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp */ = {isa = PBXBuildFile; fileRef = 6D5A80D2F12640BABF0FA789 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp */; };
+		9454FAEE074743C98A0D4BC8 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 2330F23E928E4A4CA63944E2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */; };
+		98A7C8C20E0D4EFEB2672213 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.hpp */ = {isa = PBXBuildFile; fileRef = CC9272F1F5BD462997D4510E /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.hpp */; };
+		CDC387928FE643488F842AB8 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp */ = {isa = PBXBuildFile; fileRef = 0DC5E08DE60F432880D4125B /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp */; };
+		D33C681CA8714949AE2DD17D /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.h */ = {isa = PBXBuildFile; fileRef = 9D6CE0BD26CC4E09AF4C0FC2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.h */; };
+		FE226B60014845D2894D3EE4 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm */ = {isa = PBXBuildFile; fileRef = 3C7329B0CE1E49C5A49E8FCB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXBuildStyle section */
+		041294214B664954BFB21E14 /* Debug */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = Debug;
+		};
+		3F294853F7B14C8296F1B8EC /* RelWithDebInfo */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = RelWithDebInfo;
+		};
+		4D9C4206B4324A17B6984A32 /* MinSizeRel */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = MinSizeRel;
+		};
+		858FA2C5BDF2455A9D5404A0 /* Release */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = Release;
+		};
+/* End PBXBuildStyle section */
+
+/* Begin PBXContainerItemProxy section */
+		1DDA080A8B994B9297640052 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 17B97F35EEBE48F7A8D66A85 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5B10BD8B372347D28ED7EF52;
+			remoteInfo = ZERO_CHECK;
+		};
+		AAFD0EB8274C402DA3FEBAB3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 17B97F35EEBE48F7A8D66A85 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5B10BD8B372347D28ED7EF52;
+			remoteInfo = ZERO_CHECK;
+		};
+		CB58C9385ECF4CA487FC9EA8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 17B97F35EEBE48F7A8D66A85 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC2F3445C9754926829442BB;
+			remoteInfo = DEMO1;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0DC5E08DE60F432880D4125B /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = gpu_device.cpp; path = graphics/gpu_device.cpp; sourceTree = SOURCE_ROOT; };
+		1F7E9A2C9EC94906B2ACC9DA /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = main.cpp; path = main.cpp; sourceTree = SOURCE_ROOT; };
+		2330F23E928E4A4CA63944E2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		3B6EEE6E57C349298E8F5694 /* DEMO1 */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = DEMO1; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C7329B0CE1E49C5A49E8FCB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.objcpp; fileEncoding = 4; name = camera_capture.mm; path = camera/camera_capture.mm; sourceTree = SOURCE_ROOT; };
+		5BBF1A88EB4449B7813BB828 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_resources.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = gpu_resources.hpp; path = graphics/gpu_resources.hpp; sourceTree = SOURCE_ROOT; };
+		6D5A80D2F12640BABF0FA789 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = genesis_imgui.cpp; path = graphics/genesis_imgui.cpp; sourceTree = SOURCE_ROOT; };
+		766462444CBE4385872107AB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = genesis_imgui.hpp; path = graphics/genesis_imgui.hpp; sourceTree = SOURCE_ROOT; };
+		9D6CE0BD26CC4E09AF4C0FC2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.h */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.h; fileEncoding = 4; name = camera_capture.h; path = camera/camera_capture.h; sourceTree = SOURCE_ROOT; };
+		B2B3763E94254B9593211977 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.h */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.h; fileEncoding = 4; name = filter_system.h; path = filter/filter_system.h; sourceTree = SOURCE_ROOT; };
+		CC9272F1F5BD462997D4510E /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = gpu_device.hpp; path = graphics/gpu_device.hpp; sourceTree = SOURCE_ROOT; };
+		CDC5160793104EAC9C340167 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = filter_system.cpp; path = filter/filter_system.cpp; sourceTree = SOURCE_ROOT; };
+		D1C7D4DD02234B3798A6E84F /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_enum.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = gpu_enum.hpp; path = graphics/gpu_enum.hpp; sourceTree = SOURCE_ROOT; };
+		FF18572B7CFE454CB0807928 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		B8B73F87A5E14691BD144F9C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		14D8DEAC459D4036ADF5016D /* DEMO1 */ = {
+			isa = PBXGroup;
+			children = (
+				A5A2EA14C1E8415D816DEFAC /* Header Files */,
+				7D12225BDA33490D9DCF3FEE /* Source Files */,
+				2330F23E928E4A4CA63944E2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */,
+			);
+			name = DEMO1;
+			sourceTree = "<group>";
+		};
+		5EA9388B972B4AD5B05D0C78 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		776CFC30A1F74D42B30E4F18 /* CMake Rules */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = "CMake Rules";
+			sourceTree = "<group>";
+		};
+		7D12225BDA33490D9DCF3FEE /* Source Files */ = {
+			isa = PBXGroup;
+			children = (
+				3C7329B0CE1E49C5A49E8FCB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm */,
+				CDC5160793104EAC9C340167 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp */,
+				6D5A80D2F12640BABF0FA789 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp */,
+				0DC5E08DE60F432880D4125B /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp */,
+				1F7E9A2C9EC94906B2ACC9DA /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp */,
+			);
+			name = "Source Files";
+			sourceTree = "<group>";
+		};
+		A5A2EA14C1E8415D816DEFAC /* Header Files */ = {
+			isa = PBXGroup;
+			children = (
+				9D6CE0BD26CC4E09AF4C0FC2 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.h */,
+				B2B3763E94254B9593211977 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.h */,
+				766462444CBE4385872107AB /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.hpp */,
+				CC9272F1F5BD462997D4510E /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.hpp */,
+				D1C7D4DD02234B3798A6E84F /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_enum.hpp */,
+				5BBF1A88EB4449B7813BB828 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_resources.hpp */,
+			);
+			name = "Header Files";
+			sourceTree = "<group>";
+		};
+		A6F472665B4C4E1DB93CF790 = {
+			isa = PBXGroup;
+			children = (
+				14D8DEAC459D4036ADF5016D /* DEMO1 */,
+				BA704586C67C40B2A92FF625 /* ALL_BUILD */,
+				EB0CCEB494A0417280388D73 /* Products */,
+				5EA9388B972B4AD5B05D0C78 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		BA704586C67C40B2A92FF625 /* ALL_BUILD */ = {
+			isa = PBXGroup;
+			children = (
+				776CFC30A1F74D42B30E4F18 /* CMake Rules */,
+				FF18572B7CFE454CB0807928 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/CMakeLists.txt */,
+			);
+			name = ALL_BUILD;
+			sourceTree = "<group>";
+		};
+		EB0CCEB494A0417280388D73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3B6EEE6E57C349298E8F5694 /* DEMO1 */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CC2F3445C9754926829442BB /* DEMO1 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 64A202292E2649BFA3792501 /* Build configuration list for PBXNativeTarget "DEMO1" */;
+			buildPhases = (
+				9B6F3D64DD0E499CAFC56976 /* Sources */,
+				B8B73F87A5E14691BD144F9C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				921E1E6B395E4B84AA71AEF5 /* PBXTargetDependency */,
+			);
+			name = DEMO1;
+			productName = DEMO1;
+			productReference = 3B6EEE6E57C349298E8F5694 /* DEMO1 */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		17B97F35EEBE48F7A8D66A85 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1610;
+			};
+			buildConfigurationList = 99B4F9D956E740B4B1A58576 /* Build configuration list for PBXProject "DEMO1" */;
+			buildSettings = {
+			};
+			buildStyles = (
+				041294214B664954BFB21E14 /* Debug */,
+				858FA2C5BDF2455A9D5404A0 /* Release */,
+				4D9C4206B4324A17B6984A32 /* MinSizeRel */,
+				3F294853F7B14C8296F1B8EC /* RelWithDebInfo */,
+			);
+			compatibilityVersion = "Xcode 3.2";
+			hasScannedForEncodings = 0;
+			mainGroup = A6F472665B4C4E1DB93CF790;
+			projectDirPath = "/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1";
+			projectRoot = "";
+			targets = (
+				B9F46D8ABBCD48079B558273 /* ALL_BUILD */,
+				CC2F3445C9754926829442BB /* DEMO1 */,
+				5B10BD8B372347D28ED7EF52 /* ZERO_CHECK */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3C0110FC8322DE7E50886E21 = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# shell script goes here
+exit 0";
+			showEnvVarsInLog = 0;
+		};
+		9B50530E35CC49C82C2FACCF = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# shell script goes here
+exit 0";
+			showEnvVarsInLog = 0;
+		};
+		A04B6B1268609DEBFC650AC6 /* Generate CMakeFiles/ZERO_CHECK */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate CMakeFiles/ZERO_CHECK";
+			outputPaths = (
+"/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeFiles/ZERO_CHECK"			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e
+if test \"$CONFIGURATION\" = \"Debug\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  make -f /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeScripts/ReRunCMake.make
+fi
+if test \"$CONFIGURATION\" = \"Release\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  make -f /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeScripts/ReRunCMake.make
+fi
+if test \"$CONFIGURATION\" = \"MinSizeRel\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  make -f /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeScripts/ReRunCMake.make
+fi
+if test \"$CONFIGURATION\" = \"RelWithDebInfo\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  make -f /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeScripts/ReRunCMake.make
+fi
+";
+			showEnvVarsInLog = 0;
+		};
+		CA4055EC1BC1520974A12DBF /* Generate CMakeFiles/ALL_BUILD */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate CMakeFiles/ALL_BUILD";
+			outputPaths = (
+"/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/CMakeFiles/ALL_BUILD"			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e
+if test \"$CONFIGURATION\" = \"Debug\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  echo Build\\ all\\ projects
+fi
+if test \"$CONFIGURATION\" = \"Release\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  echo Build\\ all\\ projects
+fi
+if test \"$CONFIGURATION\" = \"MinSizeRel\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  echo Build\\ all\\ projects
+fi
+if test \"$CONFIGURATION\" = \"RelWithDebInfo\"; then :
+  cd /Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1
+  echo Build\\ all\\ projects
+fi
+";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9B6F3D64DD0E499CAFC56976 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FE226B60014845D2894D3EE4 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/camera/camera_capture.mm */,
+				0AA1C1A8A21E47A184BEEC4B /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/filter/filter_system.cpp */,
+				8348D58871DF42E18746DD30 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/genesis_imgui.cpp */,
+				CDC387928FE643488F842AB8 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/graphics/gpu_device.cpp */,
+				7C3F96BA80184676A496CBF6 /* /Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/main.cpp */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		921E1E6B395E4B84AA71AEF5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5B10BD8B372347D28ED7EF52 /* ZERO_CHECK */;
+			targetProxy = AAFD0EB8274C402DA3FEBAB3 /* PBXContainerItemProxy */;
+		};
+		CD9A05E383F64F7C8FA71B13 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5B10BD8B372347D28ED7EF52 /* ZERO_CHECK */;
+			targetProxy = 1DDA080A8B994B9297640052 /* PBXContainerItemProxy */;
+		};
+		F999F60E2487471F8E7E7924 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CC2F3445C9754926829442BB /* DEMO1 */;
+			targetProxy = CB58C9385ECF4CA487FC9EA8 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0395082316794F0EBF2C9228 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		146A43A68BD64392960FD8FD /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.1.sdk;
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/build";
+			};
+			name = RelWithDebInfo;
+		};
+		2E5A4BE5A2584744BB292944 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		5BBF3A22C55145EC852058EB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		754FF0C4A72141768EAC2694 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		7ECDFA85386D43E5994E84E9 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.1.sdk;
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/build";
+			};
+			name = MinSizeRel;
+		};
+		83AF56A1D24F49CD8D1EF777 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		873F6E05D36149F3A82B0B27 /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 2;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",TRACY_ENABLE,TRACY_ON_DEMAND,TRACY_NO_SYSTEM_TRACING,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/.","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/..","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/../genesis",/usr/local/include,/opt/homebrew/Cellar/sdl2/2.32.6/include,"$(inherited)");
+				INSTALL_PATH = "";
+				LD_RUNPATH_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib /usr/local/lib","$(inherited)");
+				LIBRARY_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)",/opt/homebrew/Cellar/sdl2/2.32.6/lib,"$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/RelWithDebInfo/libGenesisFoundation.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/RelWithDebInfo/libGenesisExternal.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/RelWithDebInfo/libGenesisApp.a",/usr/local/lib/libvulkan.dylib,"-ldl","-lpthread",/opt/homebrew/Cellar/sdl2/2.32.6/lib/libSDL2.dylib,"-framework AVFoundation","-framework Foundation","-framework CoreMedia","-framework CoreVideo","-lobjc","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = DEMO1;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				SYSTEM_HEADER_SEARCH_PATHS = (/opt/homebrew/Cellar/sdl2/2.32.6/include/SDL2,"$(inherited)");
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = RelWithDebInfo;
+		};
+		B2CBFDB29A214D47BD04A2A4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.1.sdk;
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/build";
+			};
+			name = Debug;
+		};
+		B316953F10544092A3E907F7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.1.sdk;
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1/build";
+			};
+			name = Release;
+		};
+		B8D63B27B8644D7C837B6B20 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",TRACY_ENABLE,TRACY_ON_DEMAND,TRACY_NO_SYSTEM_TRACING,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/.","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/..","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/../genesis",/usr/local/include,/opt/homebrew/Cellar/sdl2/2.32.6/include,"$(inherited)");
+				INSTALL_PATH = "";
+				LD_RUNPATH_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib /usr/local/lib","$(inherited)");
+				LIBRARY_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)",/opt/homebrew/Cellar/sdl2/2.32.6/lib,"$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/MinSizeRel/libGenesisFoundation.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/MinSizeRel/libGenesisExternal.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/MinSizeRel/libGenesisApp.a",/usr/local/lib/libvulkan.dylib,"-ldl","-lpthread",/opt/homebrew/Cellar/sdl2/2.32.6/lib/libSDL2.dylib,"-framework AVFoundation","-framework Foundation","-framework CoreMedia","-framework CoreVideo","-lobjc","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = DEMO1;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				SYSTEM_HEADER_SEARCH_PATHS = (/opt/homebrew/Cellar/sdl2/2.32.6/include/SDL2,"$(inherited)");
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		C447EFAB75564616808E8408 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		E3BFFBCCDBC649019BE17D3D /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = RelWithDebInfo;
+		};
+		EEF37C1E65B64309A754B878 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",TRACY_ENABLE,TRACY_ON_DEMAND,TRACY_NO_SYSTEM_TRACING,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/.","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/..","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/../genesis",/usr/local/include,/opt/homebrew/Cellar/sdl2/2.32.6/include,"$(inherited)");
+				INSTALL_PATH = "";
+				LD_RUNPATH_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib /usr/local/lib","$(inherited)");
+				LIBRARY_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)",/opt/homebrew/Cellar/sdl2/2.32.6/lib,"$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Release/libGenesisFoundation.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Release/libGenesisExternal.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Release/libGenesisApp.a",/usr/local/lib/libvulkan.dylib,"-ldl","-lpthread",/opt/homebrew/Cellar/sdl2/2.32.6/lib/libSDL2.dylib,"-framework AVFoundation","-framework Foundation","-framework CoreMedia","-framework CoreVideo","-lobjc","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = DEMO1;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				SYSTEM_HEADER_SEARCH_PATHS = (/opt/homebrew/Cellar/sdl2/2.32.6/include/SDL2,"$(inherited)");
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		F27DD264FC5D47F285BF8DC1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",TRACY_ENABLE,TRACY_ON_DEMAND,TRACY_NO_SYSTEM_TRACING,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/.","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/..","/Users/bytedance/.openclaw/workspace/Genesis-Render/src/demo1/../genesis",/usr/local/include,/opt/homebrew/Cellar/sdl2/2.32.6/include,"$(inherited)");
+				INSTALL_PATH = "";
+				LD_RUNPATH_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib /usr/local/lib","$(inherited)");
+				LIBRARY_SEARCH_PATHS = ("/opt/homebrew/Cellar/sdl2/2.32.6/lib/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)",/opt/homebrew/Cellar/sdl2/2.32.6/lib,"$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Debug/libGenesisFoundation.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Debug/libGenesisExternal.a","/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/Debug/libGenesisApp.a",/usr/local/lib/libvulkan.dylib,"-ldl","-lpthread",/opt/homebrew/Cellar/sdl2/2.32.6/lib/libSDL2.dylib,"-framework AVFoundation","-framework Foundation","-framework CoreMedia","-framework CoreVideo","-lobjc","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = DEMO1;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				SYSTEM_HEADER_SEARCH_PATHS = (/opt/homebrew/Cellar/sdl2/2.32.6/include/SDL2,"$(inherited)");
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		F7CD41547D49424F8290DD64 /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				SYMROOT = "/Users/bytedance/.openclaw/workspace/Genesis-Render/build/xcode-debugger/src/demo1";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = RelWithDebInfo;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		64A202292E2649BFA3792501 /* Build configuration list for PBXNativeTarget "DEMO1" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F27DD264FC5D47F285BF8DC1 /* Debug */,
+				EEF37C1E65B64309A754B878 /* Release */,
+				B8D63B27B8644D7C837B6B20 /* MinSizeRel */,
+				873F6E05D36149F3A82B0B27 /* RelWithDebInfo */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		99B4F9D956E740B4B1A58576 /* Build configuration list for PBXProject "DEMO1" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2CBFDB29A214D47BD04A2A4 /* Debug */,
+				B316953F10544092A3E907F7 /* Release */,
+				7ECDFA85386D43E5994E84E9 /* MinSizeRel */,
+				146A43A68BD64392960FD8FD /* RelWithDebInfo */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AD60CA638565410FA789CEBE /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				83AF56A1D24F49CD8D1EF777 /* Debug */,
+				5BBF3A22C55145EC852058EB /* Release */,
+				0395082316794F0EBF2C9228 /* MinSizeRel */,
+				E3BFFBCCDBC649019BE17D3D /* RelWithDebInfo */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F6676072079D4239AA4492C8 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C447EFAB75564616808E8408 /* Debug */,
+				754FF0C4A72141768EAC2694 /* Release */,
+				2E5A4BE5A2584744BB292944 /* MinSizeRel */,
+				F7CD41547D49424F8290DD64 /* RelWithDebInfo */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 17B97F35EEBE48F7A8D66A85 /* Project object */;
+}
