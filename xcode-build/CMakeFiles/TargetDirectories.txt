@@ -1,0 +1,8 @@
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/CMakeFiles/GenesisFoundation.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/CMakeFiles/GenesisApp.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/CMakeFiles/GenesisExternal.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/CMakeFiles/ALL_BUILD.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/CMakeFiles/ZERO_CHECK.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/src/demo1/CMakeFiles/DEMO1.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/src/demo1/CMakeFiles/ALL_BUILD.dir
+/Users/bytedance/.openclaw/workspace/Genesis-Render/xcode-build/src/demo1/CMakeFiles/ZERO_CHECK.dir

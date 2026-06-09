@@ -6,6 +6,8 @@
 #include "camera_texture.h"
 #include "gpu_device.hpp"
 #include "foundation_layer/log.hpp"
+#include "external/imgui/imgui.h"
+#include "external/imgui/imgui_impl_vulkan.h"
 
 namespace Genesis
 {
@@ -44,8 +46,7 @@ bool CameraTexture::init(uint32_t width, uint32_t height)
     staging_size_ = width * height * 4; // BGRA 32-bit
 
     vk_device_ = device_->getDevice();
-    // Note: would need to get physical device from GpuDevice in real implementation
-    // For now let's use a workaround - create command buffer to query
+    vk_physical_ = device_->getPhysicalDevice();
 
     createImage();
     createImageView();
@@ -99,21 +100,8 @@ void CameraTexture::createImage()
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-
-    // Query physical device - would need proper interface from GpuDevice
-    // For now, let's assume we can get it via Vulkan instance lookup
-    // Simplified: using host visible memory for simplicity (not optimal but works)
-    VkPhysicalDevice physical = VK_NULL_HANDLE;
-    uint32_t count = 1;
-    // vkEnumeratePhysicalDevices would be called here
-
-    // Workaround: just hardcode memory type 1 (device local on most macOS MoltenVK)
-    // Better approach would be to add a proper memory type query in GpuDevice
-    allocInfo.memoryTypeIndex = 2; // Common device local index on AMD GPUs
-
-    // Let's add a query method in GpuDevice - for now just try with fallback
-    // This is a simplified demo; full implementation would query properly
-    allocInfo.memoryTypeIndex = 1;
+    allocInfo.memoryTypeIndex = findMemoryType(vk_physical_, memRequirements.memoryTypeBits, 
+                                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     if (vkAllocateMemory(vk_device_, &allocInfo, nullptr, &memory_) != VK_SUCCESS)
     {
@@ -187,7 +175,9 @@ void CameraTexture::createStagingBuffer()
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = 0; // Host visible - usually index 0 on most systems
+    allocInfo.memoryTypeIndex = findMemoryType(vk_physical_, memRequirements.memoryTypeBits, 
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
+                                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     if (vkAllocateMemory(vk_device_, &allocInfo, nullptr, &staging_memory_) != VK_SUCCESS)
     {
@@ -198,16 +188,63 @@ void CameraTexture::createStagingBuffer()
     vkBindBufferMemory(vk_device_, staging_buffer_, staging_memory_, 0);
 }
 
-void CameraTexture::transitionLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
+void CameraTexture::transitionLayout(VkCommandBuffer cmd, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-    // Note: full implementation would record and submit a command buffer here
-    // For simplicity in this demo, we'll use the GpuDevice's command buffers
-    // This is a placeholder - the actual upload would happen during frame rendering
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        GenesisPrint("Unsupported layout transition!\n");
+        return;
+    }
+
+    vkCmdPipelineBarrier(
+        cmd,
+        sourceStage, destinationStage,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
 }
 
-void CameraTexture::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t w, uint32_t h)
+void CameraTexture::copyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image, uint32_t w, uint32_t h)
 {
-    // Similar placeholder - actual copy would use command buffers
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {w, h, 1};
+
+    vkCmdCopyBufferToImage(cmd, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 }
 
 void CameraTexture::uploadFrame(uint8_t* data, uint32_t stride)
@@ -218,6 +255,7 @@ void CameraTexture::uploadFrame(uint8_t* data, uint32_t stride)
     void* mapped;
     if (vkMapMemory(vk_device_, staging_memory_, 0, staging_size_, 0, &mapped) != VK_SUCCESS)
     {
+        GenesisPrint("Failed to map staging memory!\n");
         return;
     }
 
@@ -236,15 +274,30 @@ void CameraTexture::uploadFrame(uint8_t* data, uint32_t stride)
     }
 
     vkUnmapMemory(vk_device_, staging_memory_);
+    dirty_ = true;
+}
 
-    // Note: full implementation would:
-    // 1. Transition image to TRANSFER_DST_OPTIMAL
-    // 2. Copy buffer to image
-    // 3. Transition to SHADER_READ_ONLY_OPTIMAL
-    // 4. Submit with proper synchronization
+void CameraTexture::updateGpu()
+{
+    if (!dirty_) return;
 
-    // For this demo, the texture descriptor set is already created
-    // ImGui will sample it on next frame
+    VkCommandBuffer cmd = device_->getCurrentCommandBuffer();
+
+    // Transition to transfer dst layout
+    if (first_upload_) {
+        transitionLayout(cmd, image_, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        first_upload_ = false;
+    } else {
+        transitionLayout(cmd, image_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    }
+
+    // Copy from staging buffer to image
+    copyBufferToImage(cmd, staging_buffer_, image_, width_, height_);
+
+    // Transition to shader read only layout
+    transitionLayout(cmd, image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    dirty_ = false;
 }
 
 } // namespace Genesis

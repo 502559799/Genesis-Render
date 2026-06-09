@@ -14,6 +14,10 @@ graphics/gpu_device.hpp
 graphics/gpu_device.cpp
 graphics/gpu_resources.hpp
 graphics/gpu_enum.hpp
+graphics/camera_texture.h
+graphics/camera_texture.cpp
+graphics/filter_renderer.h
+graphics/filter_renderer.cpp
 camera/camera_capture.h
 camera/camera_capture.mm
 filter/filter_system.h
@@ -33,6 +37,7 @@ target_include_directories(DEMO1 PRIVATE
     .
     ..
     ../genesis
+    graphics/shaders
     ${Vulkan_INCLUDE_DIRS}
 )
 
