@@ -75,7 +75,10 @@ namespace Genesis
     template <typename T>
     inline Array<T>::Array()
     {
-        // GENESIS_ASSERT(true);
+        data_ = nullptr;
+        size_ = 0;
+        capacity_ = 0;
+        allocator_ = nullptr;
     }
 
     template <typename T>
@@ -117,6 +120,7 @@ namespace Genesis
             grow(capacity_ + 1);
         }
         data_[size_] = element;
+        ++size_;
     }
 
     template <typename T>

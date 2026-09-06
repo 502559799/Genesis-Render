@@ -254,7 +254,7 @@ namespace Genesis
         allocator_ = allocator;
         blob_memory_ = blob_memory;
 
-        total_size_ = (u_int32_t)size;
+        total_size_ = (uint32_t)size;
         serialized_offset_ = allocated_offset_ = 0;
         data_memory_ = nullptr;
 

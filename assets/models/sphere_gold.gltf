@@ -1,0 +1,172 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "genesis-asset-gen"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "sphere"
+  }
+ ],
+ "meshes": [
+  {
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "TEXCOORD_0": 2,
+      "TANGENT": 3
+     },
+     "indices": 4,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "materials": [
+  {
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "metallicFactor": 1.0,
+    "roughnessFactor": 1.0,
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicRoughnessTexture": {
+     "index": 1
+    }
+   },
+   "normalTexture": {
+    "index": 2
+   },
+   "occlusionTexture": {
+    "index": 3
+   }
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 152112,
+   "uri": "sphere_gold.bin"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 25740,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 25740,
+   "byteLength": 25740,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 51480,
+   "byteLength": 17160,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 68640,
+   "byteLength": 34320,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 102960,
+   "byteLength": 49152,
+   "target": 34963
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 2145,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 2145,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 2145,
+   "type": "VEC2"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5126,
+   "count": 2145,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5125,
+   "count": 12288,
+   "type": "SCALAR"
+  }
+ ],
+ "textures": [
+  {
+   "source": 0,
+   "sampler": 0
+  },
+  {
+   "source": 1,
+   "sampler": 0
+  },
+  {
+   "source": 2,
+   "sampler": 0
+  },
+  {
+   "source": 3,
+   "sampler": 0
+  }
+ ],
+ "images": [
+  {
+   "uri": "../textures/gold_albedo.png"
+  },
+  {
+   "uri": "../textures/stripes_mr.png"
+  },
+  {
+   "uri": "../textures/dots_normal.png"
+  },
+  {
+   "uri": "../textures/white_ao.png"
+  }
+ ],
+ "samplers": [
+  {
+   "magFilter": 9729,
+   "minFilter": 9987,
+   "wrapS": 10497,
+   "wrapT": 10497
+  }
+ ]
+}

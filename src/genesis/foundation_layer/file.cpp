@@ -59,7 +59,7 @@ namespace Genesis
         FileHandle handle;
 
         fileOpen(path, &handle, "rb");
-        if (!handle)
+        if (handle)
         {
             size_t file_size = fileGetSize(&handle);
             result.size = file_size;
@@ -77,7 +77,7 @@ namespace Genesis
 
         FileHandle handle;
         fileOpen(path, &handle, "rb");
-        if (!handle)
+        if (handle)
         {
             auto file_size = fileGetSize(&handle);
             if (file_size < size)
@@ -98,7 +98,7 @@ namespace Genesis
         FileReadResult result{0, nullptr};
         FileHandle handle;
         fileOpen(path, &handle, "r");
-        if (!handle)
+        if (handle)
         {
             size_t file_size = fileGetSize(&handle);
             result.data = (char *)GenesisAlloc(file_size + 1, allocator);
@@ -115,7 +115,7 @@ namespace Genesis
         char *result = nullptr;
         FileHandle handle;
         fileOpen(path, &handle, "r");
-        if (!handle)
+        if (handle)
         {
             auto file_size = fileGetSize(&handle);
             if (file_size < size)
