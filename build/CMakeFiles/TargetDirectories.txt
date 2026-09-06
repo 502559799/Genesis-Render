@@ -1,8 +1,6 @@
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisFoundation.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisApp.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/GenesisExternal.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/edit_cache.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/CMakeFiles/rebuild_cache.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1/CMakeFiles/DEMO1.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1/CMakeFiles/edit_cache.dir
-/Users/bytedance/.openclaw/workspace/Genesis-Render/build/src/demo1/CMakeFiles/rebuild_cache.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisEngine.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisDemo.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisTests.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/test.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/edit_cache.dir
+/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,6 @@
+build/
+build-*/
+*.spv
+imgui.ini
+__pycache__/
+*.pyc
