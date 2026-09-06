@@ -74,8 +74,8 @@ namespace Genesis
 
     template <typename T>
     inline Array<T>::Array()
+        : data_(nullptr), capacity_(0), size_(0), allocator_(nullptr)
     {
-        // GENESIS_ASSERT(true);
     }
 
     template <typename T>
@@ -100,7 +100,7 @@ namespace Genesis
     template <typename T>
     inline void Array<T>::destroy()
     {
-        if (capacity_ > 0)
+        if (capacity_ > 0 && allocator_ && data_)
         {
             allocator_->deallocate(data_);
         }
