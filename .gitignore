@@ -4,3 +4,5 @@ build-*/
 imgui.ini
 __pycache__/
 *.pyc
+xcode-build/
+.codegraph/
