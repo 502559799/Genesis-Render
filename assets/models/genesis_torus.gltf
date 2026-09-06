@@ -1,0 +1,164 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Genesis gen_assets.py"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "GenesisTorus",
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "GenesisTorus",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3
+          },
+          "indices": 4,
+          "mode": 4,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "GenesisTorusMat",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          1.0,
+          0.85,
+          0.5,
+          1.0
+        ],
+        "metallicFactor": 1.0,
+        "roughnessFactor": 0.15
+      }
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 2145,
+      "type": "VEC3",
+      "min": [
+        -1.35,
+        -0.35,
+        -1.35
+      ],
+      "max": [
+        1.35,
+        0.35,
+        1.35
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 2145,
+      "type": "VEC3",
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 2145,
+      "type": "VEC4",
+      "min": [
+        -1.0,
+        0.0,
+        -1.0,
+        1.0
+      ],
+      "max": [
+        1.0,
+        0.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 2145,
+      "type": "VEC2",
+      "min": [
+        0.0,
+        0.0
+      ],
+      "max": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5123,
+      "count": 12288,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 25740,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 25740,
+      "byteLength": 25740,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 51480,
+      "byteLength": 34320,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 85800,
+      "byteLength": 17160,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 102960,
+      "byteLength": 24576,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "genesis_torus.bin",
+      "byteLength": 127536
+    }
+  ]
+}
