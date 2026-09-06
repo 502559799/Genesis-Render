@@ -11,14 +11,14 @@
 namespace Genesis
 {
 #define GENESISASSERT(condition)                   \
-    if (!condition)                                \
+    if (!(condition))                                \
     {                                              \
         GenesisPrint(GENESIS_FILENAME("FALSE\n")); \
         GENESIS_DEBUG_BREAK                        \
     }
 
 #define GENESISASSERT_MSG(condition, message, ...)                                    \
-    if (!condition)                                                                   \
+    if (!(condition))                                                                   \
     {                                                                                 \
         GenesisPrint(GENESIS_FILENAME(GENESIS_CONCAT(message, "\n")), ##__VA_ARGS__); \
         GENESIS_DEBUG_BREAK                                                           \

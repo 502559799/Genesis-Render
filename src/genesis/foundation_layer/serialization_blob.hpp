@@ -10,6 +10,9 @@
 #define __VULKAN_RENDERER_SERIALIZATION_BLOB_H__
 
 #include "foundation_layer/platform.hpp"
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
 #include "foundation_layer/memory.hpp"
 #include "foundation_layer/assert.hpp"
 #include "foundation_layer/array.hpp"

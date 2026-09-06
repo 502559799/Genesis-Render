@@ -8,6 +8,8 @@
  */
 
 #include "foundation_layer/memory.hpp"
+#include <cstring>
+#include <cstdlib>
 #include "foundation_layer/platform.hpp"
 #include "external/tlsf.h"
 #include "assert.hpp"
