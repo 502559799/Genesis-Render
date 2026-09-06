@@ -13,6 +13,8 @@
 #include "assert.hpp"
 
 #include <memory>
+#include <cstring>
+#include <cstdlib>
 
 #define HEAP_ALLOCATOR_STATS
 

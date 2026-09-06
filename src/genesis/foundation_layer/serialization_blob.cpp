@@ -22,7 +22,7 @@ namespace Genesis
         GENESISASSERT(blob_memory_);
 
         is_allocated_ = true;
-        total_size_ = (u_int32_t)size + sizeof(BlobHeader);
+        total_size_ = (uint32_t)size + sizeof(BlobHeader);
 
         serialized_offset_ = allocated_offset_ = 0;
         serialized_offset_ = cur_version_ = version;
