@@ -654,6 +654,28 @@ namespace Genesis
             return s;
         }
 
+        // GL_COMPUTE_SHADER is a GL 4.3 symbol.  macOS exposes at most OpenGL
+        // 4.1 core (no compute shaders), so the symbol does not exist there and
+        // referencing it unconditionally breaks the mac build.  Resolve the
+        // stage enum through this helper instead; compute requests fail with a
+        // clear runtime error on 4.1 rather than a compile error everywhere.
+        namespace
+        {
+            bool glStageEnum(ShaderStageFlagBits stage, GLenum &out)
+            {
+                switch (stage)
+                {
+                case ShaderStageFlagBits::Vertex: out = GL_VERTEX_SHADER; return true;
+                case ShaderStageFlagBits::Fragment: out = GL_FRAGMENT_SHADER; return true;
+                case ShaderStageFlagBits::Geometry: out = GL_GEOMETRY_SHADER; return true;
+#ifdef GL_COMPUTE_SHADER
+                case ShaderStageFlagBits::Compute: out = GL_COMPUTE_SHADER; return true;
+#endif
+                default: return false;
+                }
+            }
+        } // namespace
+
         RHIShader *GLDevice::createShader(const ShaderStageDesc &desc)
         {
             if (desc.code_type != ShaderCodeType::GlslSource || !desc.code)
@@ -662,9 +684,13 @@ namespace Genesis
                 return nullptr;
             }
             GLenum type = GL_VERTEX_SHADER;
-            if (desc.stage == ShaderStageFlagBits::Fragment) type = GL_FRAGMENT_SHADER;
-            else if (desc.stage == ShaderStageFlagBits::Compute) type = GL_COMPUTE_SHADER;
-            else if (desc.stage == ShaderStageFlagBits::Geometry) type = GL_GEOMETRY_SHADER;
+            if (!glStageEnum(desc.stage, type))
+            {
+                GEN_LOG_ERROR("[GL] shader '%s': stage not supported by this OpenGL version "
+                              "(compute needs GL 4.3+, this context caps at 4.1 core on macOS)",
+                              desc.name.c_str());
+                return nullptr;
+            }
 
             GLuint id = glCreateShader(type);
             const char *src = reinterpret_cast<const char *>(desc.code);
@@ -716,12 +742,25 @@ namespace Genesis
             for (const auto &sd : desc.shaders)
             {
                 GLuint shader = 0;
-                if (sd.code_type == ShaderCodeType::GlslSource && sd.code)
+                GLenum type = GL_VERTEX_SHADER;
+                if (sd.code_type != ShaderCodeType::GlslSource || !sd.code)
                 {
-                    GLenum type = GL_VERTEX_SHADER;
-                    if (sd.stage == ShaderStageFlagBits::Fragment) type = GL_FRAGMENT_SHADER;
-                    else if (sd.stage == ShaderStageFlagBits::Compute) type = GL_COMPUTE_SHADER;
-                    else if (sd.stage == ShaderStageFlagBits::Geometry) type = GL_GEOMETRY_SHADER;
+                    GEN_LOG_ERROR("[GL] pipeline '%s': shader stage '%s' is not GLSL source",
+                                  desc.name.c_str(), sd.name.c_str());
+                    for (GLuint s : stages) glDeleteShader(s);
+                    glDeleteProgram(program);
+                    return nullptr;
+                }
+                if (!glStageEnum(sd.stage, type))
+                {
+                    GEN_LOG_ERROR("[GL] pipeline '%s': stage '%s' not supported by this OpenGL "
+                                  "version (compute needs GL 4.3+, macOS caps at 4.1 core)",
+                                  desc.name.c_str(), sd.name.c_str());
+                    for (GLuint s : stages) glDeleteShader(s);
+                    glDeleteProgram(program);
+                    return nullptr;
+                }
+                {
                     shader = glCreateShader(type);
                     const char *src = reinterpret_cast<const char *>(sd.code);
                     GLint len = (GLint)sd.code_size;
