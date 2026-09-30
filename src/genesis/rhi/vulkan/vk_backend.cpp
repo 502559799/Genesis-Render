@@ -906,11 +906,22 @@ namespace Genesis
         //==================================================================
         bool VkDeviceRHI::beginFrame()
         {
-            if (!swapchain_valid_) return false;
+            if (!swapchain_valid_ && !desc_.headless) return false;
             ++frame_number_;
 
             VkResult res = vkWaitForFences(device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
             if (res != VK_SUCCESS) return false;
+
+            if (desc_.headless)
+            {
+                // Offscreen frames: nothing is presented, so no swapchain
+                // image is acquired (it would be presented un-rendered).
+                vkResetFences(device_, 1, &in_flight_fences_[current_frame_]);
+                VkCommandBufferRHI *cb = frame_command_buffers_[current_frame_];
+                vkResetCommandBuffer(cb->cmd, 0);
+                cb->begin(CommandBufferUsage::RenderFrame);
+                return true;
+            }
 
             res = vkAcquireNextImageKHR(device_, swapchain_, UINT64_MAX, image_available_[current_frame_],
                                         VK_NULL_HANDLE, &image_index_);
@@ -934,9 +945,21 @@ namespace Genesis
 
         void VkDeviceRHI::endFrame()
         {
-            if (!swapchain_valid_) return;
+            if (!swapchain_valid_ && !desc_.headless) return;
             VkCommandBufferRHI *cb = frame_command_buffers_[current_frame_];
             cb->end();
+
+            if (desc_.headless)
+            {
+                VkSubmitInfo si{};
+                si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                si.commandBufferCount = 1;
+                si.pCommandBuffers = &cb->cmd;
+                if (vkQueueSubmit(graphics_queue_, 1, &si, in_flight_fences_[current_frame_]) != VK_SUCCESS)
+                    GEN_LOG_ERROR("[VK] queue submit failed");
+                current_frame_ = (current_frame_ + 1) % VK_MAX_FRAMES_IN_FLIGHT;
+                return;
+            }
 
             VkCommandBuffer raw = cb->cmd;
             VkSemaphore wait_semaphores[] = {image_available_[current_frame_]};

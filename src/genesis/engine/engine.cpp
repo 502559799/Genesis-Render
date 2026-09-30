@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace Genesis
 {
@@ -54,7 +55,9 @@ namespace Genesis
         ddesc.native_window = window_.handle();
         ddesc.width = window_.drawableWidth();
         ddesc.height = window_.drawableHeight();
-        ddesc.enable_validation = config_.enable_validation;
+        // GENESIS_VALIDATION=1 turns on API validation for any run (tests,
+        // screenshots): Vulkan validation layers / per-command GL checks.
+        ddesc.enable_validation = config_.enable_validation || std::getenv("GENESIS_VALIDATION") != nullptr;
         ddesc.headless = config_.headless;
         ddesc.vsync = config_.vsync;
         ddesc.srgb_backbuffer = config_.srgb_backbuffer;

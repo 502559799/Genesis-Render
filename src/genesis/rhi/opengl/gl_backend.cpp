@@ -91,13 +91,13 @@ namespace Genesis
         void *GLBuffer::map(uint64_t offset, uint64_t size)
         {
             if (size == ~0ull) size = desc_.size - offset;
-            glBindBuffer(target_, id_);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, id_);
             GLbitfield flags = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT;
             if (desc_.memory_usage == MemoryUsage::CpuToGpu)
                 flags = GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_UNSYNCHRONIZED_BIT;
             else if (desc_.memory_usage == MemoryUsage::GpuToCpu)
                 flags = GL_MAP_READ_BIT;
-            void *p = glMapBufferRange(target_, (GLintptr)offset, (GLsizeiptr)size, flags);
+            void *p = glMapBufferRange(GL_COPY_WRITE_BUFFER, (GLintptr)offset, (GLsizeiptr)size, flags);
             mapped_ = (p != nullptr);
             return p;
         }
@@ -105,8 +105,8 @@ namespace Genesis
         void GLBuffer::unmap()
         {
             if (!mapped_) return;
-            glBindBuffer(target_, id_);
-            glUnmapBuffer(target_);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, id_);
+            glUnmapBuffer(GL_COPY_WRITE_BUFFER);
             mapped_ = false;
         }
 
@@ -561,12 +561,15 @@ namespace Genesis
         //==================================================================
         RHIBuffer *GLDevice::createBuffer(const BufferDesc &desc)
         {
+            // Data is always specified through GL_COPY_WRITE_BUFFER: binding
+            // GL_ELEMENT_ARRAY_BUFFER here would silently rewrite the index
+            // buffer of whatever vertex array object is currently bound.
             GLuint id = 0;
             glGenBuffers(1, &id);
-            GLenum target = glBufferTarget(desc.usage);
-            glBindBuffer(target, id);
-            glBufferData(target, (GLsizeiptr)desc.size, desc.initial_data, glUsageHint(desc.memory_usage));
-            glBindBuffer(target, 0);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, id);
+            glBufferData(GL_COPY_WRITE_BUFFER, (GLsizeiptr)std::max<uint64_t>(desc.size, 4), desc.initial_data,
+                         glUsageHint(desc.memory_usage));
+            glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
             GLBuffer *b = new GLBuffer(id, desc);
             buffers_.push_back(b);
             return b;
@@ -971,14 +974,16 @@ namespace Genesis
         void GLDevice::writeBuffer(RHIBuffer *buffer, const void *data, uint64_t size, uint64_t offset)
         {
             GLBuffer *b = static_cast<GLBuffer *>(buffer);
-            if (!b) return;
-            glBindBuffer(b->target(), b->id());
+            if (!b || !data || !size) return;
             if (offset + size > b->size())
             {
-                glBufferData(b->target(), (GLsizeiptr)(offset + size), nullptr, glUsageHint(b->memoryUsage()));
+                GEN_LOG_ERROR("[GL] writeBuffer('%s') out of range (%llu + %llu > %llu)", b->name().c_str(),
+                              (unsigned long long)offset, (unsigned long long)size, (unsigned long long)b->size());
+                return;
             }
-            glBufferSubData(b->target(), (GLintptr)offset, (GLsizeiptr)size, data);
-            glBindBuffer(b->target(), 0);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, b->id());
+            glBufferSubData(GL_COPY_WRITE_BUFFER, (GLintptr)offset, (GLsizeiptr)size, data);
+            glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
         }
 
         void GLDevice::writeTexture(RHITexture *texture, const void *data, uint64_t size,

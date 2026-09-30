@@ -329,6 +329,7 @@ namespace Genesis
             void applyPipelineState(GLPipeline *pipeline);
             void bindVAO(GLPipeline *pipeline);
             void checkError(const char *where);
+            bool validating() const;
 
             GLDevice *device_ = nullptr;
             GLPipeline *current_pipeline_ = nullptr;

@@ -31,8 +31,31 @@ namespace Genesis
         void GLCommandBuffer::checkError(const char *where)
         {
             GLenum err = glGetError();
-            if (err != GL_NO_ERROR)
-                GEN_LOG_ERROR("[GL] error 0x%04x at %s", err, where);
+            if (err == GL_NO_ERROR) return;
+            GEN_LOG_ERROR("[GL] error 0x%04x at %s", err, where);
+            if (err == GL_INVALID_OPERATION && current_pipeline_ && validating())
+            {
+                // Ask the driver why the program cannot draw in this state.
+                GLuint program = current_pipeline_->program();
+                glValidateProgram(program);
+                GLint len = 0;
+                glGetProgramiv(program, GL_INFO_LOG_LENGTH, &len);
+                if (len > 1)
+                {
+                    std::string log((size_t)len, '\0');
+                    glGetProgramInfoLog(program, len, nullptr, &log[0]);
+                    GEN_LOG_ERROR("[GL]   program validation: %s", log.c_str());
+                }
+            }
+        }
+
+        // GL has no validation layer: with --validation (or the environment
+        // variable GENESIS_GL_VALIDATE) every command checks glGetError, so a
+        // failing call is reported where it happens instead of later.
+        bool GLCommandBuffer::validating() const
+        {
+            static const bool env = std::getenv("GENESIS_GL_VALIDATE") != nullptr;
+            return env || device_->desc().enable_validation;
         }
 
         void GLCommandBuffer::beginRenderPass(RHIRenderPass *pass, RHIFramebuffer *fb, const RenderPassBeginInfo &info)
@@ -96,6 +119,7 @@ namespace Genesis
                 }
             }
             if (clear_mask) glClear(clear_mask);
+            if (validating()) checkError("beginRenderPass");
         }
 
         void GLCommandBuffer::endRenderPass()
@@ -189,6 +213,7 @@ namespace Genesis
             // Sampler uniforms must be (re)asserted whenever the program changes.
             for (const auto &su : p->samplerUniforms())
                 glUniform1i(su.location, (GLint)su.unit);
+            if (validating()) checkError("bindPipeline");
         }
 
         void GLCommandBuffer::bindVertexBuffer(RHIBuffer *buffer, uint64_t offset)
@@ -270,12 +295,14 @@ namespace Genesis
             }
             (void)dyn_index; // consumed per dynamic binding above
             glActiveTexture(GL_TEXTURE0);
+            if (validating()) checkError("bindDescriptorSets");
         }
 
         void GLCommandBuffer::setPushConstants(const void *data, uint32_t size)
         {
             if (!current_pipeline_) return;
             current_pipeline_->setPushConstants(data, size);
+            if (validating()) checkError("setPushConstants");
         }
 
         void GLCommandBuffer::setViewport(const Viewport &vp)
@@ -286,12 +313,14 @@ namespace Genesis
             viewport_ = vp;
             glViewport((GLint)vp.x, (GLint)vp.y, (GLsizei)vp.width, (GLsizei)vp.height);
             glDepthRange(vp.min_depth, vp.max_depth);
+            if (validating()) checkError("setViewport");
         }
 
         void GLCommandBuffer::setScissor(const Rect2D &rect)
         {
             glEnable(GL_SCISSOR_TEST);
             glScissor(rect.x, rect.y, (GLsizei)rect.width, (GLsizei)rect.height);
+            if (validating()) checkError("setScissor");
         }
 
         void GLCommandBuffer::draw(uint32_t vertex_count, uint32_t first_vertex, uint32_t instance_count, uint32_t first_instance)
@@ -304,6 +333,7 @@ namespace Genesis
                 glDrawArraysInstanced(mode, (GLint)first_vertex, (GLsizei)vertex_count, (GLsizei)instance_count);
             else
                 glDrawArrays(mode, (GLint)first_vertex, (GLsizei)vertex_count);
+            if (validating()) checkError(current_pipeline_ ? current_pipeline_->desc().name.c_str() : "draw");
         }
 
         void GLCommandBuffer::drawIndexed(uint32_t index_count, uint32_t first_index, int32_t vertex_offset,
@@ -330,6 +360,7 @@ namespace Genesis
                 glDrawElementsInstanced(mode, (GLsizei)index_count, type, offset_ptr, (GLsizei)instance_count);
             else
                 glDrawElements(mode, (GLsizei)index_count, type, offset_ptr);
+            if (validating()) checkError(current_pipeline_ ? current_pipeline_->desc().name.c_str() : "drawIndexed");
         }
 
         void GLCommandBuffer::dispatch(uint32_t group_x, uint32_t group_y, uint32_t group_z)

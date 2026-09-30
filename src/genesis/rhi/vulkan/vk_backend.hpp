@@ -263,10 +263,10 @@ namespace Genesis
 
             bool beginFrame() override;
             RHICommandBuffer *currentCommandBuffer() override { return frame_command_buffers_[current_frame_]; }
-            RHIRenderPass *swapchainRenderPass() override { return swapchain_render_pass_; }
+            RHIRenderPass *swapchainRenderPass() override { return desc_.headless ? nullptr : swapchain_render_pass_; }
             RHIFramebuffer *currentSwapchainFramebuffer() override
             {
-                return swapchain_framebuffers_.empty() ? nullptr : swapchain_framebuffers_[image_index_];
+                return (desc_.headless || swapchain_framebuffers_.empty()) ? nullptr : swapchain_framebuffers_[image_index_];
             }
             void endFrame() override;
             uint32_t currentFrameIndex() const override { return current_frame_; }
