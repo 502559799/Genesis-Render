@@ -552,6 +552,65 @@ namespace Demo
         ImGui::End();
     }
 
+    int DemoApp::selfTest()
+    {
+        const uint32_t errors_before = Logger::instance().errorCount();
+        auto frames = [&](int n)
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                engine.tick();
+                tick(1.0f / 60.0f);
+            }
+        };
+        show_engine_ = show_render_ = show_inspector_ = show_material_ = show_cb_ = show_text_ = show_console_ = show_log_ =
+            show_help_ = true;
+        for (uint32_t k = 0; k < (uint32_t)SceneKind::Count; ++k)
+        {
+            GEN_LOG_INFO("[selftest] scene %s", sceneName((SceneKind)k));
+            pending_scene_ = (SceneKind)k;
+            frames(8);
+            custom_pipeline_ = true;
+            frames(4);
+            custom_split_ = true;
+            custom_pip_ = true;
+            custom_effect_b_ = (int)Render::PostEffect::Vignette;
+            frames(3);
+            custom_pipeline_ = custom_split_ = false;
+            frames(2);
+            for (uint32_t fx = 0; fx < (uint32_t)Render::PostEffect::Count; ++fx)
+            {
+                engine.render().settings().post_effect = (Render::PostEffect)fx;
+                frames(1);
+            }
+            engine.render().settings().post_effect = Render::PostEffect::None;
+            for (const auto &ex : kConsoleExamples)
+            {
+                runConsole(ex[1]);
+                frames(1);
+            }
+            Render::RenderScene &scene = engine.render().scene();
+            Render::MaterialPtr m = scene.createMaterial("selftest_material");
+            material_index_ = m->index;
+            m->setRenderTexture(Render::TextureSlot::BaseColor, monitor_rt_);
+            Render::MaterialPtr copy = scene.cloneMaterial(*m, "selftest_copy");
+            if (ECS::MeshComponent *mc = engine.world().getComponent<ECS::MeshComponent>(selected_))
+                mc->material_overrides.assign(mc->model ? mc->model->meshes.size() : 1, copy->index);
+            for (preview_mesh_ = 0; preview_mesh_ < 4; ++preview_mesh_) frames(1);
+            preview_mesh_ = 0;
+            if (engine.world().isAlive(selected_))
+            {
+                engine.device()->waitIdle();
+                engine.world().destroyEntity(selected_);
+                selected_ = ECS::nullEntity();
+            }
+            frames(3);
+        }
+        const int errors = (int)(Logger::instance().errorCount() - errors_before) + (int)engine.script().errorCount();
+        GEN_LOG_INFO("[selftest] done: %d error(s)", errors);
+        return errors;
+    }
+
     void DemoApp::drawLogPanel()
     {
         ImGuiIO &io = ImGui::GetIO();

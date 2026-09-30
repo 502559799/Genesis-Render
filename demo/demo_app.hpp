@@ -60,6 +60,7 @@ namespace Demo
         SceneKind scene = SceneKind::Showcase;
         std::string script; // extra Lua file attached as a script entity
         std::string lab;    // pre-enabled lab for screenshots: material | commandbuffer | custom | text
+        bool selftest = false;
     };
 
     class DemoApp
@@ -71,6 +72,9 @@ namespace Demo
         bool initialize();
         void tick(float dt); // after Engine::tick: logic + command buffer recording
         void handleShortcuts();
+        // Drives every scene, panel and interaction path for a few frames each
+        // (used by --selftest); returns the number of errors logged meanwhile.
+        int selfTest();
 
         std::string asset(const std::string &relative) const;
 

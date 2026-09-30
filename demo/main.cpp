@@ -16,6 +16,8 @@
  *                              GL error checks, Metal API validation)
  *   --no-ui / --no-script      skip ImGui / Lua
  *   --asset-dir PATH           asset root (default: GENESIS_ASSET_DIR)
+ *   --selftest                 drive every scene / panel / interaction path
+ *                              for a few frames and exit (non-zero on errors)
  */
 #include "demo_app.hpp"
 
@@ -41,7 +43,7 @@ namespace
             "                    [--script file.lua] [--lab material|commandbuffer|custom|text|inspector]\n"
             "                    [--headless] [--frames N] [--screenshot out.png] [--showcase DIR]\n"
             "                    [--width W] [--height H] [--validation] [--no-ui] [--no-script]\n"
-            "                    [--asset-dir DIR]\n"
+            "                    [--asset-dir DIR] [--selftest]\n"
             "\n"
             "  scenes   showcase       C++ scene: models, material library, labels, monitor\n"
             "           lua            scene built entirely by assets/scripts/scene_builder.lua\n"
@@ -77,6 +79,7 @@ namespace
             else if (a == "--asset-dir") o.asset_dir = next(GENESIS_ASSET_DIR);
             else if (a == "--script") o.script = next("");
             else if (a == "--lab") o.lab = next("");
+            else if (a == "--selftest") o.selftest = true;
             else if (a == "--scene")
             {
                 std::string v = next("showcase");
@@ -392,6 +395,13 @@ int main(int argc, char **argv)
     {
         GEN_LOG_ERROR("demo initialisation failed");
         return 1;
+    }
+
+    if (options.selftest)
+    {
+        int errors = app.selfTest();
+        app.engine.shutdown();
+        return errors == 0 ? 0 : 4;
     }
 
     if (!options.screenshot.empty())
