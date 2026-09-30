@@ -9,7 +9,7 @@
 -- 2. Custom pipeline (key C): the built-in forward pipeline is switched off
 --    and this script builds the whole frame itself:
 --       scene -> HDR RT -> tone map -> LDR RT -> effect -> backbuffer
---    plus picture-in-picture and HUD.  Keys 1..9 / 0 select the effect.
+--    plus picture-in-picture and HUD.  Key E cycles the effect.
 -- 3. Organise / execute: every command below is *recorded* in tick(); the
 --    renderer executes it later on the GPU.
 
@@ -75,7 +75,7 @@ function start(id)
   -- ---- HUD --------------------------------------------------------------
   S.hud = CommandBuffer.new("cb_hud")
   renderer:addCommandBuffer("overlay", S.hud)
-  print("commandbuffer_demo: C = custom pipeline, 1..0 = effect, M = monitor")
+  print("commandbuffer_demo: C = custom pipeline, E = next effect, M = monitor")
 end
 
 local function recordMonitor(t)
@@ -125,9 +125,7 @@ function tick(dt, id)
   local t = engine.time
   if input:keyPressed("C") then S.custom = not S.custom end
   if input:keyPressed("M") then S.monitor = not S.monitor end
-  for i = 1, 10 do
-    if input:keyPressed(tostring(i % 10)) then S.effect = i end
-  end
+  if input:keyPressed("E") then S.effect = S.effect % #S.effects + 1 end
   settings.pipeline = S.custom and "custom" or "forward"
 
   recordMonitor(t)
@@ -139,7 +137,7 @@ function tick(dt, id)
   hud:drawRect(16 * s, renderer.height - 116 * s, 520 * s, 100 * s, color(0.02, 0.03, 0.05, 0.75))
   hud:drawText(S.custom and "Custom pipeline (C)" or "Forward pipeline + injected command buffers (C)",
                28 * s, renderer.height - 106 * s, 20 * s, color(1, 1, 1))
-  hud:drawText("effect [1..0]: " .. S.effects[S.effect] .. "    monitor [M]: " .. (S.monitor and "on" or "off"),
+  hud:drawText("effect [E]: " .. S.effects[S.effect] .. "    monitor [M]: " .. (S.monitor and "on" or "off"),
                28 * s, renderer.height - 76 * s, 18 * s, color(0.6, 0.85, 1))
   hud:drawText("render to texture -> monitor mesh + picture-in-picture", 28 * s, renderer.height - 48 * s, 16 * s,
                color(0.75, 0.75, 0.75))

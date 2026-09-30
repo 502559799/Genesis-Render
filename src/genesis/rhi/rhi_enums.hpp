@@ -22,6 +22,8 @@ namespace Genesis
         };
 
         const char *backendTypeName(BackendType type);
+        enum class PixelFormat : uint32_t;
+        const char *pixelFormatName(PixelFormat format);
 
         //------------------------------------------------------------------
         // Pixel / vertex formats

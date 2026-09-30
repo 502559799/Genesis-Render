@@ -464,7 +464,7 @@ namespace Genesis
         const RenderSystem::EntityMeshBinding *RenderSystem::binding(ECS::Entity e) const
         {
             auto it = bindings_.find(e.id);
-            return it != bindings_.end() ? &it->second : nullptr;
+            return (it != bindings_.end() && it->second.entity.generation == e.generation) ? &it->second : nullptr;
         }
 
         void RenderSystem::addCommandBuffer(CameraEvent event, const CommandBufferPtr &cb)

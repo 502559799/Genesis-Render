@@ -314,6 +314,13 @@ namespace Genesis
             {
                 if (isAlive(e)) records_[e.id].name = n;
             }
+            // First alive entity with the given name (nullEntity() if none).
+            Entity findEntity(const std::string &n) const
+            {
+                for (size_t i = 0; i < records_.size(); ++i)
+                    if (records_[i].alive && records_[i].name == n) return Entity{(EntityId)i, records_[i].generation};
+                return nullEntity();
+            }
 
             // Rebuild a handle from a raw id (used by the scripting layer).
             Entity entityFromId(EntityId id) const

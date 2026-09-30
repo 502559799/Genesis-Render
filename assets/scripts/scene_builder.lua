@@ -140,10 +140,11 @@ function tick(dt, id)
 
   -- re-record the HUD: the renderer executes it after tone mapping
   local s = renderer.height / 720
+  local x, y = renderer.width * 0.5 - 210 * s, renderer.height - 108 * s
   S.hud:clear()
-  S.hud:drawRect(16 * s, 16 * s, 420 * s, 92 * s, color(0.02, 0.03, 0.05, 0.72))
-  S.hud:drawRectOutline(16 * s, 16 * s, 420 * s, 92 * s, color(0.3, 0.7, 1.0, 0.9), 2 * s)
-  S.hud:drawText("Scene built by Lua through RTTI", 30 * s, 26 * s, 26 * s, color(1, 1, 1))
+  S.hud:drawRect(x, y, 420 * s, 92 * s, color(0.02, 0.03, 0.05, 0.72))
+  S.hud:drawRectOutline(x, y, 420 * s, 92 * s, color(0.3, 0.7, 1.0, 0.9), 2 * s)
+  S.hud:drawText("Scene built by Lua through RTTI", x + 14 * s, y + 10 * s, 26 * s, color(1, 1, 1))
   S.hud:drawText(string.format("%s  |  %.0f fps  |  %d draws  |  %d tris", engine.backend, engine.fps,
-                               renderer.draw_calls, renderer.triangles), 30 * s, 62 * s, 18 * s, color(0.6, 0.85, 1.0))
+                               renderer.draw_calls, renderer.triangles), x + 14 * s, y + 46 * s, 18 * s, color(0.6, 0.85, 1.0))
 end

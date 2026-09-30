@@ -18,6 +18,16 @@ namespace Genesis
             return "Unknown";
         }
 
+        const char *pixelFormatName(PixelFormat format)
+        {
+            static const char *names[] = {"Undefined", "R8_UNORM", "RG8_UNORM", "RGB8_UNORM", "RGBA8_UNORM", "RGBA8_SRGB",
+                                          "BGRA8_UNORM", "R16_SFLOAT", "RG16_SFLOAT", "RGBA16_SFLOAT", "R32_SFLOAT",
+                                          "RG32_SFLOAT", "RGB32_SFLOAT", "RGBA32_SFLOAT", "RGBA32_UINT", "R32_UINT",
+                                          "D16_UNORM", "D24_UNORM_S8_UINT", "D32_SFLOAT", "D32_SFLOAT_S8_UINT"};
+            static_assert(sizeof(names) / sizeof(names[0]) == (unsigned)PixelFormat::Count, "pixel format names");
+            return (uint32_t)format < (uint32_t)PixelFormat::Count ? names[(uint32_t)format] : "Unknown";
+        }
+
         uint32_t pixelFormatBytesPerPixel(PixelFormat format)
         {
             switch (format)

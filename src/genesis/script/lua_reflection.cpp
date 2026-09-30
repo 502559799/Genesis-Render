@@ -626,6 +626,25 @@ mat4 = M4
 )LUA";
         } // namespace
 
+        namespace
+        {
+            int printToLog(lua_State *L)
+            {
+                const int n = lua_gettop(L); // before luaL_buffinit, which may push a placeholder
+                luaL_Buffer b;
+                luaL_buffinit(L, &b);
+                for (int i = 1; i <= n; ++i)
+                {
+                    if (i > 1) luaL_addchar(&b, '\t');
+                    luaL_tolstring(L, i, nullptr);
+                    luaL_addvalue(&b);
+                }
+                luaL_pushresult(&b);
+                GEN_LOG_INFO("[Lua] %s", lua_tostring(L, -1));
+                return 0;
+            }
+        } // namespace
+
         void openReflection(lua_State *L)
         {
             Reflect::registerEngineTypes();
@@ -710,6 +729,9 @@ mat4 = M4
             lua_setglobal(L, "entity");
             lua_pushcfunction(L, assetPath);
             lua_setglobal(L, "asset");
+            // print() goes to the engine log (visible in the demo log / console).
+            lua_pushcfunction(L, printToLog);
+            lua_setglobal(L, "print");
         }
 
     } // namespace Script

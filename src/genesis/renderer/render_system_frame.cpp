@@ -332,7 +332,7 @@ namespace Genesis
                 {
                     if (!mc.visible || !mc.model) return;
                     auto bit = rs_.bindings_.find(e.id);
-                    if (bit == rs_.bindings_.end()) return;
+                    if (bit == rs_.bindings_.end() || bit->second.entity.generation != e.generation) return;
                     appendEntityItems(e, mc, bit->second, cam, cull ? &frustum : nullptr, opaque, transparent, culled);
                 });
                 std::sort(opaque.begin(), opaque.end(), [](const RenderItem &a, const RenderItem &b) { return a.depth < b.depth; });

@@ -407,9 +407,8 @@ namespace Genesis
                             }, "creates an entity (with a Transform)")
                     .method("find", [](ECS::World &w, std::string name)
                             {
-                                for (ECS::Entity e : w.entities())
-                                    if (w.entityName(e) == name) return entityValue(&w, e);
-                                return Value();
+                                ECS::Entity e = w.findEntity(name);
+                                return e.valid() ? entityValue(&w, e) : Value();
                             }, "first entity with the given name, or nil")
                     .method("entity", [](ECS::World &w, int64_t id) { return entityValue(&w, w.entityFromId((ECS::EntityId)id)); })
                     .method("destroy", [](ECS::World &w, ECS::Entity e) { w.destroyEntity(e); })
