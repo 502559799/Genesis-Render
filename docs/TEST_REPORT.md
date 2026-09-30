@@ -41,7 +41,7 @@
 ./build/bin/genesis_tests
 tests run      : 124        (34 CPU + 30 GPU × OpenGL / Vulkan / Metal)
 tests failed   : 0
-checks         : 114949
+checks         : 114958
 cross backend  : MATCH
 RESULT: PASS
 ```
@@ -99,12 +99,12 @@ demo 的所有场景 × 功能面板组合（showcase/lua/commandbuffer/empty ×
 | reflection（4） | registry_describes_every_engine_type、values_convert_tolerantly、properties_enums_and_read_only、methods_record_command_buffer_commands |
 | command_buffer（1） | recording_copies_arguments_and_names_roundtrip |
 
-**GPU（29，每个后端各跑一遍）**
+**GPU（30，每个后端各跑一遍）**
 
 | 组 | 用例与关键断言 |
 |---|---|
 | rhi（2） | device_creation_and_limits、clear_colour_readback_is_exact |
-| render（9） | unlit 覆盖率、实时材质编辑、immediate 命令与后处理、导入模型、FBX、视锥剔除、tonemap/gamma、天空盒、截图文件往返 |
+| render（10） | 调试线只存在一帧、unlit 覆盖率、实时材质编辑、immediate 命令与后处理、导入模型、FBX、视锥剔除、tonemap/gamma、天空盒、截图文件往返 |
 | pbr（5） | 方向光梯度、金属≠电介质、粗糙度模糊高光、Blinn-Phong 与 Cook-Torrance 均有效且不同、点光/聚光衰减 |
 | ibl（2） | BRDF LUT 与 CPU 参考积分一致、均匀环境的 irradiance 为常数 |
 | commandbuffer（5） | RT + drawMesh 并保持方向（球在 RT 上半部分，像素 (32,16)=(255,0,0)）；2D 矩形左上原点像素精确；Custom 管线不画场景除非命令要求、drawScene 生效、切回 Forward 完全恢复；11 种 blit 效果均改变图像（invert/grayscale 精确校验）；采样当前目标的绘制被跳过 |

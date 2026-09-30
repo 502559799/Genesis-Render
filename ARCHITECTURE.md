@@ -30,4 +30,4 @@ conventions, material / CommandBuffer / RTTI / text design, fixes) is
 
 ## Verification
 
-`./build.sh --test [--validation]` runs 121 tests (34 CPU tests plus 29 GPU tests on each of the three backends). It also runs two cross-backend scenes that match pixel for pixel, with zero messages from the Vulkan validation layer, GL error checks and Metal API / shader validation. See `docs/TEST_REPORT.md` and `docs/VERIFICATION.md`.
+`./build.sh --test [--validation]` runs 124 tests (34 CPU tests plus 30 GPU tests on each of the three backends). It also runs two cross-backend scenes that match pixel for pixel, with zero messages from the Vulkan validation layer, GL error checks and Metal API / shader validation. See `docs/TEST_REPORT.md` and `docs/VERIFICATION.md`.

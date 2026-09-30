@@ -53,7 +53,7 @@ done
 ## 3. 自己复现
 
 ```bash
-./build.sh --clean --test                    # 编译 + 121 个测试 + 跨后端比对
+./build.sh --clean --test                    # 编译 + 124 个测试 + 跨后端比对
 ./build.sh --test --validation               # 三后端校验层
 ./build/bin/genesis_demo --backend vulkan --selftest   # 自动走一遍所有场景 / 面板 / 交互路径
 ./build/bin/genesis_demo --backend vulkan    # 交互验证（菜单 Scene / Windows）
