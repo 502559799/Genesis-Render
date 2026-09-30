@@ -317,6 +317,23 @@ namespace Genesis
             bool supports_tessellation = false;
             bool supports_multisample = true;
             bool supports_srgb_framebuffer = true;
+
+            // Conventions the renderer must honour (never infer them from the
+            // backend type):
+            //  * clip_depth_zero_to_one: NDC depth range [0,1] (Vulkan/Metal)
+            //    instead of [-1,1] (OpenGL).
+            //  * present_row0_top: row 0 of the swapchain image is displayed at
+            //    the top of the window (Vulkan/Metal) or at the bottom (the GL
+            //    default framebuffer).  Offscreen targets always rasterise NDC
+            //    y=-1 into row 0 on every backend.
+            //  * depth_format: depth-stencil format guaranteed to be renderable
+            //    (D24S8 where available, D32S8 on Apple GPUs).
+            //  * frames_in_flight: how many frames the CPU may record ahead of
+            //    the GPU; per-frame transient data must be ring-buffered by it.
+            bool clip_depth_zero_to_one = false;
+            bool present_row0_top = false;
+            PixelFormat depth_format = PixelFormat::D24_UNORM_S8_UINT;
+            uint32_t frames_in_flight = 1;
         };
 
         //------------------------------------------------------------------

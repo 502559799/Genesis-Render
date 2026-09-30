@@ -280,21 +280,18 @@ namespace Genesis
 
         void GLCommandBuffer::setViewport(const Viewport &vp)
         {
+            // Viewports and scissors are expressed in render-target row space
+            // (y = 0 is row 0 of the attachment) on every backend, which is
+            // exactly GL's window coordinate system, so no conversion here.
             viewport_ = vp;
-            uint32_t fb_h = current_fb_ ? current_fb_->height() : device_->swapchainHeight();
-            // Engine viewport uses a top-left origin (Vulkan convention);
-            // GL uses bottom-left, so flip Y here.
-            GLint y = (GLint)((int32_t)fb_h - (int32_t)(vp.y + vp.height));
-            glViewport((GLint)vp.x, y, (GLsizei)vp.width, (GLsizei)vp.height);
+            glViewport((GLint)vp.x, (GLint)vp.y, (GLsizei)vp.width, (GLsizei)vp.height);
             glDepthRange(vp.min_depth, vp.max_depth);
         }
 
         void GLCommandBuffer::setScissor(const Rect2D &rect)
         {
-            uint32_t fb_h = current_fb_ ? current_fb_->height() : device_->swapchainHeight();
-            GLint y = (GLint)((int32_t)fb_h - rect.y - (int32_t)rect.height);
             glEnable(GL_SCISSOR_TEST);
-            glScissor(rect.x, y, (GLsizei)rect.width, (GLsizei)rect.height);
+            glScissor(rect.x, rect.y, (GLsizei)rect.width, (GLsizei)rect.height);
         }
 
         void GLCommandBuffer::draw(uint32_t vertex_count, uint32_t first_vertex, uint32_t instance_count, uint32_t first_instance)
@@ -326,74 +323,6 @@ namespace Genesis
                 // rebinding the vertex buffer with an offset (rare path).
                 glDrawElementsInstanced(mode, (GLsizei)index_count, type, offset_ptr, (GLsizei)instance_count);
                 return;
-            }
-            if (std::getenv("GENESIS_DBG_DRAW"))
-            {
-                GLint prog = 0, vao = 0, eb = 0, ab = 0, fbo = 0;
-                glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
-                glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &eb);
-                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &ab);
-                glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
-                GLint vp[4] = {0, 0, 0, 0};
-                glGetIntegerv(GL_VIEWPORT, vp);
-                GLenum err0 = glGetError();
-                GEN_LOG_INFO("[GLDBG] draw prog=%d vao=%d eb=%d ab=%d fbo=%d viewport=%d,%d,%d,%d idx=%u mode=0x%x type=0x%x err=0x%x",
-                             prog, vao, eb, ab, fbo, vp[0], vp[1], vp[2], vp[3], index_count, mode, type, err0);
-                for (GLuint loc = 0; loc < 7; ++loc)
-                {
-                    GLint enabled = 0;
-                    glGetVertexAttribiv(loc, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &enabled);
-                    GLint size = 0, stride = 0;
-                    void *ptr = nullptr;
-                    glGetVertexAttribiv(loc, GL_VERTEX_ATTRIB_ARRAY_SIZE, &size);
-                    glGetVertexAttribiv(loc, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
-                    glGetVertexAttribPointerv(loc, GL_VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
-                    GEN_LOG_INFO("[GLDBG]   attrib %u: enabled=%d size=%d stride=%d offset=%p", loc, enabled, size, stride, ptr);
-                }
-                if (prog)
-                {
-                    GLint idx = glGetUniformBlockIndex((GLuint)prog, "PerFrame");
-                    GLint binding = -1;
-                    if (idx != GL_INVALID_INDEX)
-                        glGetActiveUniformBlockiv((GLuint)prog, (GLuint)idx, GL_UNIFORM_BLOCK_BINDING, &binding);
-                    GLint bound_buf = 0;
-                    if (binding >= 0) glGetIntegeri_v(GL_UNIFORM_BUFFER_BINDING, (GLuint)binding, &bound_buf);
-                    GEN_LOG_INFO("[GLDBG]   PerFrame block=%d binding=%d bound_buffer=%d", idx, binding, bound_buf);
-                    if (bound_buf)
-                    {
-                        GLfloat data[16] = {0};
-                        GLint prev = 0;
-                        glGetIntegerv(GL_UNIFORM_BUFFER_BINDING, &prev);
-                        glBindBuffer(GL_UNIFORM_BUFFER, (GLuint)bound_buf);
-                        // view_projection is the third mat4 -> byte offset 128
-                        glGetBufferSubData(GL_UNIFORM_BUFFER, 128, sizeof(data), data);
-                        glBindBuffer(GL_UNIFORM_BUFFER, (GLuint)prev);
-                        GEN_LOG_INFO("[GLDBG]   view_proj = [%.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f | %.3f %.3f %.3f %.3f]",
-                                     data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
-                                     data[8], data[9], data[10], data[11], data[12], data[13], data[14], data[15]);
-                        // PerDraw dynamic offset block
-                        GLint pd_idx = glGetUniformBlockIndex((GLuint)prog, "PerDraw");
-                        GLint pd_binding = -1;
-                        if (pd_idx != GL_INVALID_INDEX)
-                            glGetActiveUniformBlockiv((GLuint)prog, (GLuint)pd_idx, GL_UNIFORM_BLOCK_BINDING, &pd_binding);
-                        GLint pd_buf = 0;
-                        if (pd_binding >= 0) glGetIntegeri_v(GL_UNIFORM_BUFFER_BINDING, (GLuint)pd_binding, &pd_buf);
-                        GLfloat model[16] = {0};
-                        if (pd_buf)
-                        {
-                            GLint off = 0, sz = 0;
-                            glGetIntegeri_v(GL_UNIFORM_BUFFER_BINDING, 0, &off); // not the real query; see below
-                            (void)off; (void)sz;
-                            glBindBuffer(GL_UNIFORM_BUFFER, (GLuint)pd_buf);
-                            glGetBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(model), model);
-                            glBindBuffer(GL_UNIFORM_BUFFER, (GLuint)prev);
-                        }
-                        GEN_LOG_INFO("[GLDBG]   PerDraw block=%d binding=%d buf=%d model_diag=[%.3f %.3f %.3f %.3f] trans=[%.3f %.3f %.3f]",
-                                     pd_idx, pd_binding, pd_buf, model[0], model[5], model[10], model[15],
-                                     model[12], model[13], model[14]);
-                    }
-                }
             }
             if (vertex_offset != 0)
                 glDrawElementsBaseVertex(mode, (GLsizei)index_count, type, offset_ptr, (GLint)vertex_offset);

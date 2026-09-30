@@ -531,27 +531,22 @@ TEST_GPU(render, live_material_edit_updates_pixels)
     CHECK_MSG(g0 > r0 && g0 > b0, "live base-colour edit made the sphere green at the centre");
 }
 
-TEST_GPU(render, overlay_commandlist_renders_and_post_effect_changes_output)
+TEST_GPU(render, immediate_commands_render_and_post_effect_changes_output)
 {
     if (!g_available) return;
     TestEngine te;
     if (!te.init(128, 128)) return;
-    // Overlay (free command list + SDF text) is only initialised when a font
-    // is provided; skip if the font asset is absent on this machine.
-    Render::OverlaySystem &ov = te.engine.render().overlay();
-    if (!ov.ready()) { GEN_LOG_WARN("[test] overlay not ready (no font); skipping"); return; }
-
     te.addCamera(Math::Vec3(0, 0, 3), Math::Vec3(0, 0, 0), 40.0f);
+    te.engine.render().settings().show_skybox = false;
 
     Image clean;
     CHECK(te.capture(clean));
     if (!clean.valid()) return;
 
-    // Record a full-screen bright fill + SDF text, then capture; this must not
-    // crash and must change the output.
-    ov.clearCommands();
-    ov.fill2D(0, 0, 128, 128, 0.9f, 0.2f, 0.2f, 1.0f);
-    ov.text().drawText2D(20, 20, 18.0f, "HELLO SDF", Math::Color(1, 1, 1, 1), 128, 128);
+    // Per-frame immediate command buffer (2D overlay): a full-screen fill + text.
+    Render::CommandBuffer &overlay = te.engine.render().immediate(Render::CameraEvent::Overlay);
+    overlay.drawRect(0, 0, 128, 128, Math::Color(0.9f, 0.2f, 0.2f, 1.0f));
+    overlay.drawText("HELLO SDF", 20, 20, 18.0f, Math::Color(1, 1, 1, 1));
     Image filled;
     CHECK(te.capture(filled));
     if (filled.valid())
@@ -559,17 +554,20 @@ TEST_GPU(render, overlay_commandlist_renders_and_post_effect_changes_output)
         uint8_t r, g, b, a;
         filled.at(60, 60, r, g, b, a);
         GEN_LOG_INFO("[test] overlay fill pixel (60,60)=(%u,%u,%u); mean diff=%.4f", r, g, b, clean.meanAbsDifference(filled));
-        CHECK_MSG(clean.meanAbsDifference(filled) > 0.02f, "free command-list draws reach the frame");
+        CHECK_MSG(clean.meanAbsDifference(filled) > 0.02f, "immediate command-buffer draws reach the frame");
+        CHECK_MSG(r > 200 && g < 90, "the fill colour is exact where no text covers it");
     }
 
-    // Programmable post: the invert effect flips the (near-black empty) scene
-    // to near-white.  Compare against a clean capture with no effect and no
-    // overlay fill, so the effect actually changes the background.
-    ov.clearCommands();
-    ov.postEffect(Render::PostEffect::Invert);
+    // Immediate buffers are cleared after each frame.
+    Image cleared;
+    CHECK(te.capture(cleared));
+    if (cleared.valid()) CHECK_MSG(clean.meanAbsDifference(cleared) < 0.002f, "immediate buffers do not persist");
+
+    // Programmable post: the invert effect turns the black background white.
+    te.engine.render().settings().post_effect = Render::PostEffect::Invert;
     Image inverted;
     CHECK(te.capture(inverted));
-    ov.postEffect(Render::PostEffect::None);
+    te.engine.render().settings().post_effect = Render::PostEffect::None;
     if (inverted.valid())
         CHECK_MSG(clean.meanAbsDifference(inverted) > 0.1f, "programmable post invert changes the output");
 }
@@ -1019,7 +1017,7 @@ TEST_GPU(render, frustum_culling_removes_draw_calls)
     mat.base_color_factor = Math::Color(0.5f, 0.8f, 0.5f);
     auto model = Procedural::wrapMesh(Procedural::makeBox(1, 1, 1), mat, "cube");
     te.addMesh(model, Math::Vec3(0, 0, 0), 1.0f, "visible");
-    te.addMesh(model, Math::Vec3(0, 0, -50.0f), 1.0f, "behind_camera");
+    te.addMesh(model, Math::Vec3(0, 0, 50.0f), 1.0f, "behind_camera");
     te.addCamera(Math::Vec3(0, 0, 3), Math::Vec3(0, 0, 0), 50.0f);
 
     Render::RenderSettings &s = te.engine.render().settings();

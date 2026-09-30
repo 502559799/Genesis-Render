@@ -32,14 +32,14 @@ namespace Genesis
             case PixelFormat::BGRA8_UNORM:
             case PixelFormat::RG16_SFLOAT:
             case PixelFormat::R32_SFLOAT:
-            case PixelFormat::RGBA32_UINT:
             case PixelFormat::R32_UINT:
             case PixelFormat::D24_UNORM_S8_UINT:
             case PixelFormat::D32_SFLOAT: return 4;
+            case PixelFormat::RGBA16_SFLOAT:
             case PixelFormat::RG32_SFLOAT:
             case PixelFormat::D32_SFLOAT_S8_UINT: return 8;
             case PixelFormat::RGB32_SFLOAT: return 12;
-            case PixelFormat::RGBA16_SFLOAT:
+            case PixelFormat::RGBA32_UINT:
             case PixelFormat::RGBA32_SFLOAT: return 16;
             default: break;
             }

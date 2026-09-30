@@ -29,6 +29,7 @@
 
 #define GS_SHADING_COOK_TORRANCE 0
 #define GS_SHADING_BLINN_PHONG 1
+#define GS_SHADING_UNLIT 2
 
 const float GS_PI = 3.14159265358979323846;
 const float GS_MIN_ROUGHNESS = 0.045; // keeps D/G finite (Piccolo clamps to 0.05)

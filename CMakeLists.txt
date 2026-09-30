@@ -4,6 +4,7 @@
 #  Options
 #    GENESIS_BACKEND_OPENGL   build the OpenGL 4.1 backend            (default ON)
 #    GENESIS_BACKEND_VULKAN   build the Vulkan backend                (default ON)
+#    GENESIS_BACKEND_METAL    build the Metal backend                 (default ON on macOS)
 #    GENESIS_BUILD_DEMO       build the demo application              (default ON)
 #    GENESIS_BUILD_TESTS      build the unit / render test suite      (default ON)
 #    GENESIS_LEGACY_DEMO1     build the original macOS camera demo    (default OFF, APPLE only)
@@ -14,7 +15,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(GenesisRender
         VERSION 2.0.0
-        DESCRIPTION "Genesis Render - cross platform ECS rendering engine (OpenGL + Vulkan, PBR/IBL)"
+        DESCRIPTION "Genesis Render - cross platform ECS rendering engine (OpenGL + Vulkan + Metal, PBR/IBL)"
         LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -78,7 +79,7 @@ message(STATUS " Genesis Render ${PROJECT_VERSION}")
 message(STATUS "   platform : ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS "   compiler : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "   build    : ${CMAKE_BUILD_TYPE}")
-message(STATUS "   backends : OpenGL=${GENESIS_BACKEND_OPENGL} Vulkan=${GENESIS_BACKEND_VULKAN}")
+message(STATUS "   backends : OpenGL=${GENESIS_BACKEND_OPENGL} Vulkan=${GENESIS_BACKEND_VULKAN} Metal=${GENESIS_BACKEND_METAL}")
 message(STATUS "----------------------------------------------------------")
 
 # ---------------------------------------------------------------------------
@@ -162,12 +163,8 @@ set(IMGUI_SOURCES
     ${GENESIS_EXTERNAL_DIR}/imgui/imgui_demo.cpp
     ${GENESIS_EXTERNAL_DIR}/imgui/imgui_impl_sdl.cpp
 )
-if(GENESIS_BACKEND_OPENGL)
-    list(APPEND IMGUI_SOURCES ${GENESIS_EXTERNAL_DIR}/imgui/imgui_impl_opengl3.cpp)
-endif()
-if(GENESIS_BACKEND_VULKAN)
-    list(APPEND IMGUI_SOURCES ${GENESIS_EXTERNAL_DIR}/imgui/imgui_impl_vulkan.cpp)
-endif()
+# ImGui is rendered by the engine's own RHI renderer (src/genesis/ui), so no
+# graphics API specific ImGui backend is compiled.
 
 file(GLOB LUA_SOURCES CONFIGURE_DEPENDS ${GENESIS_EXTERNAL_DIR}/lua/*.c)
 
@@ -209,15 +206,13 @@ endif()
 
 add_library(GenesisEngine STATIC ${GENESIS_ENGINE_ALL_SOURCES} ${IMGUI_SOURCES} ${LUA_SOURCES})
 
-# Compile the Objective-C++ Metal translation unit in manual reference
-# counting (MRC): Metal's new* methods return +1 objects that we keep in the
-# void* RHI handles, so no ARC bridging is required.  (MRC also lets C-style
-# casts between void* and id<...> work, which the ARC-only __bridge rules
-# would reject.)
+# The Metal backend is Objective-C++ with ARC: every Metal object lives in a
+# strong id<> member of a C++ class defined inside metal_backend.mm, so the
+# rest of the engine never sees Objective-C.
 if(GENESIS_BACKEND_METAL)
     set_source_files_properties(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/genesis/rhi/metal/metal_backend.mm
-        PROPERTIES COMPILE_FLAGS "-x objective-c++")
+        PROPERTIES COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
 endif()
 
 target_include_directories(GenesisEngine PUBLIC
@@ -244,7 +239,7 @@ target_compile_definitions(GenesisEngine PRIVATE
 if(GENESIS_PLATFORM_LINUX)
     target_compile_definitions(GenesisEngine PRIVATE LUA_USE_LINUX)
 elseif(GENESIS_PLATFORM_MACOS)
-    target_compile_definitions(GenesisEngine PRIVATE LUA_USE_MACOSX)
+    target_compile_definitions(GenesisEngine PRIVATE LUA_USE_MACOSX GL_SILENCE_DEPRECATION)
 endif()
 
 target_link_libraries(GenesisEngine PUBLIC
@@ -271,7 +266,6 @@ if(GENESIS_PLATFORM_MACOS)
     endif()
     if(GENESIS_BACKEND_METAL)
         list(APPEND GENESIS_MACOS_FRAMEWORKS "-framework Metal")
-        list(APPEND GENESIS_MACOS_FRAMEWORKS "-framework MetalKit")
     endif()
     target_link_libraries(GenesisEngine PUBLIC ${GENESIS_MACOS_FRAMEWORKS})
 else()

@@ -168,6 +168,12 @@ namespace Genesis
             uint32_t w = 1, h = 1;
             std::string fb_name;
             bool owns_pass = false;
+            // One entry per render pass attachment (nullptr for swapchain
+            // images); used to keep the tracked image layouts in sync with
+            // the pass initial/final layouts.
+            std::vector<VkTextureRHI *> attachment_textures;
+            // Single-mip / single-layer views created for this framebuffer.
+            std::vector<VkImageView> owned_views;
             ~VkFramebufferRHI() override {}
             uint32_t width() const override { return w; }
             uint32_t height() const override { return h; }
@@ -197,6 +203,8 @@ namespace Genesis
             VkCommandPool pool = VK_NULL_HANDLE;
             VkDeviceRHI *device = nullptr;
             VkRenderPass current_pass = VK_NULL_HANDLE;
+            VkRenderPassRHI *current_pass_obj = nullptr;
+            VkFramebufferRHI *current_fb = nullptr;
             VkPipelineRHI *current_pipeline = nullptr;
             bool inside_pass = false;
             IndexType bound_index_type = IndexType::UInt16;

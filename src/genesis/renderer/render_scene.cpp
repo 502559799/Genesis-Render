@@ -2,6 +2,7 @@
  * Genesis Render - render scene implementation
  */
 #include "renderer/render_scene.hpp"
+#include "renderer/frame_resources.hpp"
 #include "foundation_layer/genesis_log.hpp"
 
 #include <algorithm>
@@ -20,47 +21,35 @@ namespace Genesis
             Math::Transform t = Math::Transform::fromMatrix(world_matrix);
             position = t.position;
             rotation = t.rotation.normalized();
-            Math::Mat4 basis = Math::Mat4::fromQuat(rotation);
-            forward = -basis.zAxis();
-            up = basis.yAxis();
+        }
+
+        void CameraState::lookAt(const Math::Vec3 &eye, const Math::Vec3 &target, const Math::Vec3 &world_up)
+        {
+            position = eye;
+            Math::Vec3 dir = target - eye;
+            if (Math::lengthSquared(dir) < 1e-10f) dir = Math::Vec3(0, 0, -1);
+            rotation = Math::Quat::lookRotation(Math::normalize(dir), world_up);
         }
 
         void CameraState::update()
         {
             Math::Mat4 cam_world = Math::Mat4::compose(position, rotation, Math::Vec3(1.0f));
-            forward = -cam_world.zAxis();
-            up = cam_world.yAxis();
+            forward = Math::normalize(-cam_world.zAxis());
+            up = Math::normalize(cam_world.yAxis());
+            right = Math::normalize(cam_world.xAxis());
             view = cam_world.inversed();
 
-            const bool zero_to_one = (backend == RHI::BackendType::Vulkan);
             if (orthographic)
             {
                 float h = ortho_size * 0.5f;
                 float w = h * aspect;
-                projection = Math::Mat4::ortho(-w, w, -h, h, near_plane, far_plane, zero_to_one);
+                projection = Math::Mat4::ortho(-w, w, -h, h, near_plane, far_plane, depth_zero_to_one);
             }
             else
             {
-                projection = Math::Mat4::perspective(Math::toRadians(fov_degrees), aspect, near_plane, far_plane, zero_to_one);
+                projection = Math::Mat4::perspective(Math::toRadians(fov_degrees), aspect, near_plane, far_plane,
+                                                     depth_zero_to_one);
             }
-
-            // Orientation
-            // -----------
-            // The projection is used UNFLIPPED on both backends.  Flipping Y in
-            // clip space would also reverse triangle winding, which would force
-            // per-target pipeline variants just to keep back-face culling right.
-            //
-            // Instead we accept the natural orientation of each backend:
-            //   * both backends map NDC y = -1 to row 0 of the render target
-            //     (GL: window origin bottom-left, Vulkan: y_fb = (ndc+1)/2*h),
-            //   * with a GL style (y up) projection the BOTTOM of the view lands
-            //     on row 0, so every offscreen image is "row 0 = bottom" and
-            //     multi-pass chains stay self consistent on both backends.
-            //
-            // The single place where orientation is corrected is the final
-            // present/tone mapping pass, which flips the sampling V coordinate
-            // when needed (see RenderSystem::renderFrame / renderAndCapture).
-            (void)target_is_swapchain;
             view_projection = projection * view;
             inv_view_projection = view_projection.inversed();
             inv_view = cam_world;
@@ -71,8 +60,9 @@ namespace Genesis
             Math::Ray ray;
             if (viewport_w <= 0.0f || viewport_h <= 0.0f) return ray;
             float ndc_x = Math::clampf(2.0f * (pixel_x / viewport_w) - 1.0f, -1.0f, 1.0f);
-            float ndc_y = Math::clampf(2.0f * (pixel_y / viewport_h) - 1.0f, -1.0f, 1.0f);
-            float near_z = (backend == RHI::BackendType::Vulkan) ? 0.0f : -1.0f;
+            // Screen y grows downwards, NDC y upwards.
+            float ndc_y = Math::clampf(1.0f - 2.0f * (pixel_y / viewport_h), -1.0f, 1.0f);
+            float near_z = depth_zero_to_one ? 0.0f : -1.0f;
 
             Math::Vec4 p_near = inv_view_projection * Math::Vec4(ndc_x, ndc_y, near_z, 1.0f);
             Math::Vec4 p_far = inv_view_projection * Math::Vec4(ndc_x, ndc_y, 1.0f, 1.0f);
@@ -98,15 +88,6 @@ namespace Genesis
             void recordMipGeneration(RHI::RHICommandBuffer *cb, void *user)
             {
                 MipRequest *req = reinterpret_cast<MipRequest *>(user);
-                RHI::TextureBarrier barrier{};
-                barrier.texture = req->texture;
-                barrier.old_layout = req->texture->currentLayout();
-                barrier.new_layout = RHI::TextureLayout::TransferDstOptimal;
-                barrier.base_mip = 0;
-                barrier.mip_count = 1;
-                barrier.base_layer = 0;
-                barrier.layer_count = ~0u;
-                cb->pipelineBarrier(&barrier, 1);
                 cb->generateMipmaps(req->texture);
             }
 
@@ -136,23 +117,22 @@ namespace Genesis
         void TextureCache::clear()
         {
             for (auto &kv : cache_)
-            {
-                if (kv.second.owns)
-                {
-                    if (kv.second.texture) device_->destroyTexture(kv.second.texture);
-                }
-            }
+                if (kv.second.texture) device_->destroyTexture(kv.second.texture);
             cache_.clear();
-            defaults_created_ = false;
-            white_ = GpuTexture();
-            black_ = GpuTexture();
-            normal_ = GpuTexture();
-            grey_ = GpuTexture();
+            white_ = black_ = normal_ = grey_ = black_cube_ = GpuTexture();
         }
 
-        RHI::RHISampler *TextureCache::samplerFor(bool mipmap, RHI::AddressMode address, bool srgb)
+        std::vector<GpuTexture> TextureCache::list() const
         {
-            (void)srgb;
+            std::vector<GpuTexture> out;
+            for (const auto &kv : cache_)
+                if (kv.first.rfind("__default", 0) != 0) out.push_back(kv.second);
+            std::sort(out.begin(), out.end(), [](const GpuTexture &a, const GpuTexture &b) { return a.key < b.key; });
+            return out;
+        }
+
+        RHI::RHISampler *TextureCache::samplerFor(bool mipmap, RHI::AddressMode address)
+        {
             char key[64];
             std::snprintf(key, sizeof(key), "%d|%d", (int)mipmap, (int)address);
             auto it = samplers_.find(key);
@@ -190,8 +170,7 @@ namespace Genesis
             desc.height = std::max(1u, image.height);
             desc.mip_levels = mipmap ? mipLevelsFor(image.width, image.height) : 1;
             desc.generate_mipmaps = mipmap && desc.mip_levels > 1;
-            desc.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled |
-                         (uint32_t)RHI::TextureUsageFlagBits::TransferDst |
+            desc.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled | (uint32_t)RHI::TextureUsageFlagBits::TransferDst |
                          (uint32_t)RHI::TextureUsageFlagBits::TransferSrc;
             desc.name = key;
             out.texture = device_->createTexture(desc);
@@ -203,75 +182,35 @@ namespace Genesis
 
             std::vector<uint8_t> rgba = image.asRGBA8();
             device_->writeTexture(out.texture, rgba.data(), rgba.size(), image.width, image.height, 0, 0, 1);
-
             if (desc.generate_mipmaps)
             {
                 MipRequest req{out.texture};
                 device_->submitImmediate(recordMipGeneration, &req);
             }
-            out.sampler = samplerFor(mipmap, RHI::AddressMode::Repeat, srgb);
+            out.sampler = samplerFor(mipmap, RHI::AddressMode::Repeat);
             cache_[key] = out;
             return out;
         }
 
-        GpuTexture TextureCache::createCubeFromFaces(const std::vector<std::vector<uint8_t>> &faces, uint32_t size,
-                                                     const std::string &key, bool srgb)
+        GpuTexture TextureCache::acquirePath(const std::string &path, bool srgb)
         {
-            auto it = cache_.find(key);
-            if (it != cache_.end()) return it->second;
-            if (faces.size() != 6)
-            {
-                GEN_LOG_ERROR("[TextureCache] createCubeFromFaces needs exactly 6 faces");
-                return white();
-            }
-
-            GpuTexture out;
-            out.key = key;
-            out.width = out.height = size;
-            out.srgb = srgb;
-
-            RHI::TextureDesc desc;
-            desc.type = RHI::TextureType::TexCube;
-            desc.format = srgb ? RHI::PixelFormat::RGBA8_SRGB : RHI::PixelFormat::RGBA8_UNORM;
-            desc.width = size;
-            desc.height = size;
-            desc.array_layers = 1;
-            desc.mip_levels = mipLevelsFor(size, size);
-            desc.generate_mipmaps = true;
-            desc.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled |
-                         (uint32_t)RHI::TextureUsageFlagBits::TransferDst |
-                         (uint32_t)RHI::TextureUsageFlagBits::TransferSrc;
-            desc.name = key;
-            out.texture = device_->createTexture(desc);
-            if (!out.texture) return white();
-
-            std::vector<uint8_t> all;
-            all.reserve((size_t)size * size * 4 * 6);
-            for (const auto &f : faces)
-            {
-                all.insert(all.end(), f.begin(), f.end());
-                if (f.size() < (size_t)size * size * 4)
-                    all.resize(all.size() + ((size_t)size * size * 4 - f.size()), 0);
-            }
-            device_->writeTexture(out.texture, all.data(), all.size(), size, size, 0, 0, 6);
-
-            MipRequest req{out.texture};
-            device_->submitImmediate(recordMipGeneration, &req);
-
-            out.sampler = samplerFor(true, RHI::AddressMode::ClampToEdge, srgb);
-            cache_[key] = out;
-            return out;
+            TextureRef ref;
+            ref.path = path;
+            ref.srgb = srgb;
+            ref.valid = !path.empty();
+            return acquire(ref, srgb, "white");
         }
 
         GpuTexture TextureCache::acquire(const TextureRef &ref, bool srgb, const std::string &fallback_key)
         {
-            if (!ref.valid)
+            auto fallback = [&]() -> GpuTexture
             {
-                if (fallback_key == "white") return white();
                 if (fallback_key == "black") return black();
                 if (fallback_key == "normal") return flatNormal();
+                if (fallback_key == "grey") return grey();
                 return white();
-            }
+            };
+            if (!ref.valid) return fallback();
 
             std::string key;
             std::shared_ptr<ImageData> image = ref.embedded;
@@ -293,89 +232,80 @@ namespace Genesis
             if (!image)
             {
                 GEN_LOG_WARN("[TextureCache] cannot resolve texture '%s' - using %s", ref.describe().c_str(), fallback_key.c_str());
-                if (fallback_key == "black") return black();
-                if (fallback_key == "normal") return flatNormal();
-                return white();
+                return fallback();
             }
             return createFromImage(*image, key, srgb, true);
         }
 
+        static GpuTexture makeSolid(TextureCache &cache, const char *key, uint8_t r, uint8_t g, uint8_t b, uint8_t a)
+        {
+            ImageData img;
+            img.width = img.height = 4;
+            img.channels = 4;
+            img.pixels.resize(64);
+            for (size_t i = 0; i < 16; ++i)
+            {
+                img.pixels[i * 4 + 0] = r;
+                img.pixels[i * 4 + 1] = g;
+                img.pixels[i * 4 + 2] = b;
+                img.pixels[i * 4 + 3] = a;
+            }
+            return cache.createFromImage(img, key, false, false);
+        }
+
         const GpuTexture &TextureCache::white()
         {
-            if (!white_.texture)
-            {
-                ImageData img;
-                img.width = img.height = 4;
-                img.channels = 4;
-                img.pixels.assign(64, 255);
-                white_ = createFromImage(img, "__default_white", false, false);
-                white_.owns = false; // stays in the cache map
-            }
+            if (!white_.texture) white_ = makeSolid(*this, "__default_white", 255, 255, 255, 255);
             return white_;
         }
 
         const GpuTexture &TextureCache::black()
         {
-            if (!black_.texture)
-            {
-                ImageData img;
-                img.width = img.height = 4;
-                img.channels = 4;
-                img.pixels.assign(64, 0);
-                for (size_t i = 3; i < img.pixels.size(); i += 4) img.pixels[i] = 255;
-                black_ = createFromImage(img, "__default_black", false, false);
-                black_.owns = false;
-            }
+            if (!black_.texture) black_ = makeSolid(*this, "__default_black", 0, 0, 0, 255);
             return black_;
         }
 
         const GpuTexture &TextureCache::flatNormal()
         {
-            if (!normal_.texture)
-            {
-                ImageData img;
-                img.width = img.height = 4;
-                img.channels = 4;
-                img.pixels.resize(64);
-                for (size_t i = 0; i < 16; ++i)
-                {
-                    img.pixels[i * 4 + 0] = 128;
-                    img.pixels[i * 4 + 1] = 128;
-                    img.pixels[i * 4 + 2] = 255;
-                    img.pixels[i * 4 + 3] = 255;
-                }
-                normal_ = createFromImage(img, "__default_normal", false, false);
-                normal_.owns = false;
-            }
+            if (!normal_.texture) normal_ = makeSolid(*this, "__default_normal", 128, 128, 255, 255);
             return normal_;
         }
 
         const GpuTexture &TextureCache::grey()
         {
-            if (!grey_.texture)
-            {
-                ImageData img;
-                img.width = img.height = 4;
-                img.channels = 4;
-                img.pixels.resize(64);
-                for (size_t i = 0; i < 16; ++i)
-                {
-                    img.pixels[i * 4 + 0] = 200; // roughness-ish mid grey
-                    img.pixels[i * 4 + 1] = 128;
-                    img.pixels[i * 4 + 2] = 128;
-                    img.pixels[i * 4 + 3] = 255;
-                }
-                grey_ = createFromImage(img, "__default_grey", false, false);
-                grey_.owns = false;
-            }
+            // glTF metallic-roughness convention: G = roughness, B = metallic.
+            if (!grey_.texture) grey_ = makeSolid(*this, "__default_grey", 255, 255, 255, 255);
             return grey_;
+        }
+
+        const GpuTexture &TextureCache::blackCube()
+        {
+            if (black_cube_.texture) return black_cube_;
+            RHI::TextureDesc desc;
+            desc.type = RHI::TextureType::TexCube;
+            desc.format = RHI::PixelFormat::RGBA8_UNORM;
+            desc.width = desc.height = 1;
+            desc.mip_levels = 1;
+            desc.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled | (uint32_t)RHI::TextureUsageFlagBits::TransferDst;
+            desc.name = "__default_black_cube";
+            black_cube_.texture = device_->createTexture(desc);
+            if (black_cube_.texture)
+            {
+                const uint8_t faces[6 * 4] = {0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255};
+                device_->writeTexture(black_cube_.texture, faces, sizeof(faces), 1, 1, 0, 0, 6);
+            }
+            black_cube_.sampler = samplerFor(false, RHI::AddressMode::ClampToEdge);
+            black_cube_.key = desc.name;
+            black_cube_.width = black_cube_.height = 1;
+            cache_[desc.name] = black_cube_;
+            return black_cube_;
         }
 
         //==================================================================
         // RenderScene
         //==================================================================
-        RenderScene::RenderScene(RHI::RHIDevice *device, RHI::RHIResourceLayout *material_layout)
-            : device_(device), material_layout_(material_layout), texture_cache_(device)
+        RenderScene::RenderScene(RHI::RHIDevice *device, RHI::RHIResourceLayout *mesh_layout, FrameAllocator *frames)
+            : device_(device), mesh_layout_(mesh_layout), frames_(frames), texture_cache_(device)
         {
         }
 
@@ -388,8 +318,10 @@ namespace Genesis
         {
             for (auto &m : materials_)
             {
-                if (m->ubo_buffer) device_->destroyBuffer(m->ubo_buffer);
                 if (m->descriptor_set) device_->destroyDescriptorSet(m->descriptor_set);
+                m->descriptor_set = nullptr;
+                m->owner = nullptr;
+                m->bound_revision = 0;
             }
             materials_.clear();
             for (auto &m : meshes_)
@@ -450,138 +382,173 @@ namespace Genesis
             return (uint32_t)meshes_.size() - 1;
         }
 
-        int32_t RenderScene::uploadMaterial(const MaterialData &material, const std::string &base_dir)
+        int32_t RenderScene::addMaterial(const MaterialPtr &material)
         {
-            (void)base_dir;
-            auto gpu = std::make_unique<GpuMaterial>();
-            gpu->name = material.name;
+            if (!material) return -1;
+            if (material->owner == this && material->index >= 0) return material->index;
+            material->owner = this;
+            material->index = (int32_t)materials_.size();
+            materials_.push_back(material);
+            return material->index;
+        }
 
-            // Factors: glTF stores base colour / emissive factors already in
-            // linear space, so no conversion is needed here.
-            gpu->ubo.base_color_factor = GpuVec4::from(material.base_color_factor);
-            gpu->ubo.emissive_factor = GpuVec4(material.emissive_factor.r, material.emissive_factor.g,
-                                               material.emissive_factor.b, 1.0f);
-            gpu->ubo.params0 = GpuVec4(material.metallic_factor, material.roughness_factor,
-                                       material.normal_scale, material.occlusion_strength);
-            gpu->ubo.params1 = GpuVec4(material.alpha_cutoff,
-                                       (float)material.alpha_mode,
-                                       material.double_sided ? 1.0f : 0.0f,
-                                       0.0f); // shading mode, set by RenderSystem
-            gpu->ubo.texture_mask = GpuVec4(material.base_color.valid ? 1.0f : 0.0f,
-                                            material.metallic_roughness.valid ? 1.0f : 0.0f,
-                                            material.normal.valid ? 1.0f : 0.0f,
-                                            material.occlusion.valid ? 1.0f : 0.0f);
-            gpu->ubo.extra = GpuVec4(material.emissive.valid ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
+        MaterialPtr RenderScene::createMaterial(const std::string &name)
+        {
+            MaterialPtr m = std::make_shared<Material>(name);
+            addMaterial(m);
+            return m;
+        }
 
-            gpu->base_color = texture_cache_.acquire(material.base_color, true, "white");
-            gpu->metallic_roughness = texture_cache_.acquire(material.metallic_roughness, false, "grey");
-            gpu->normal = texture_cache_.acquire(material.normal, false, "normal");
-            gpu->occlusion = texture_cache_.acquire(material.occlusion, false, "white");
-            gpu->emissive = texture_cache_.acquire(material.emissive, true, "black");
+        MaterialPtr RenderScene::cloneMaterial(const Material &source, const std::string &new_name)
+        {
+            MaterialPtr m = std::make_shared<Material>(new_name);
+            addMaterial(m);
+            m->copyFrom(source);
+            return m;
+        }
 
-            gpu->transparent = (material.alpha_mode == MaterialData::AlphaMode::Blend);
-            gpu->alpha_mask = (material.alpha_mode == MaterialData::AlphaMode::Mask);
-            gpu->double_sided = material.double_sided;
+        MaterialPtr RenderScene::findMaterial(const std::string &name) const
+        {
+            for (const auto &m : materials_)
+                if (m->name == name) return m;
+            return nullptr;
+        }
 
-            // Uniform buffer + descriptor set (set 1)
-            RHI::BufferDesc ubd;
-            ubd.size = sizeof(MaterialUBO);
-            ubd.usage = (uint32_t)RHI::BufferUsageFlagBits::Uniform | (uint32_t)RHI::BufferUsageFlagBits::TransferDst;
-            ubd.memory_usage = RHI::MemoryUsage::CpuToGpu;
-            ubd.initial_data = &gpu->ubo;
-            ubd.initial_data_size = sizeof(MaterialUBO);
-            ubd.name = gpu->name + ".material_ubo";
-            gpu->ubo_buffer = device_->createBuffer(ubd);
+        int32_t RenderScene::createMaterial(const MaterialData &data)
+        {
+            MaterialPtr m = std::make_shared<Material>(data.name);
+            addMaterial(m);
+            // glTF stores base colour / emissive factors in linear space.
+            m->base_color = data.base_color_factor;
+            m->emissive = Math::Color(data.emissive_factor.r, data.emissive_factor.g, data.emissive_factor.b, 1.0f);
+            m->emissive_strength = 1.0f;
+            m->metallic = data.metallic_factor;
+            m->roughness = data.roughness_factor;
+            m->normal_scale = data.normal_scale;
+            m->occlusion_strength = data.occlusion_strength;
+            m->alpha_cutoff = data.alpha_cutoff;
+            m->double_sided = data.double_sided;
+            m->blend = data.alpha_mode == MaterialData::AlphaMode::Blend  ? MaterialBlend::Transparent
+                       : data.alpha_mode == MaterialData::AlphaMode::Mask ? MaterialBlend::Masked
+                                                                          : MaterialBlend::Opaque;
 
-            if (material_layout_ && gpu->ubo_buffer)
+            auto assign = [&](TextureSlot slot, const TextureRef &ref, bool srgb)
             {
-                // The material layout is the *combined* mesh layout (sets 0..2);
-                // materials live in set 1, so the descriptor set must be
-                // allocated from that set's layout, otherwise it would collide
-                // with the scene set on the GL uniform block binding points.
-                gpu->descriptor_set = device_->createDescriptorSet(material_layout_, 1);
-                if (gpu->descriptor_set)
+                if (!ref.valid) return;
+                GpuTexture tex = texture_cache_.acquire(ref, srgb, "white");
+                Material::Slot &s = m->slots[(size_t)slot];
+                s.texture = tex;
+                s.source = ref.path.empty() ? tex.key : ref.path;
+                s.enabled = true;
+            };
+            assign(TextureSlot::BaseColor, data.base_color, true);
+            assign(TextureSlot::MetallicRoughness, data.metallic_roughness, false);
+            assign(TextureSlot::Normal, data.normal, false);
+            assign(TextureSlot::Occlusion, data.occlusion, false);
+            assign(TextureSlot::Emissive, data.emissive, true);
+            ++m->texture_revision;
+            return m->index;
+        }
+
+        Material *RenderScene::defaultMaterial()
+        {
+            if (default_material_index_ >= 0) return materials_[(size_t)default_material_index_].get();
+            MaterialPtr m = createMaterial("__default_material");
+            m->base_color = Math::Color(0.8f, 0.8f, 0.8f, 1.0f);
+            m->metallic = 0.0f;
+            m->roughness = 0.6f;
+            default_material_index_ = m->index;
+            return m.get();
+        }
+
+        bool RenderScene::prepareMaterial(Material &m)
+        {
+            // Render textures may have been resized (new GPU objects).
+            for (auto &slot : m.slots)
+            {
+                if (slot.render_texture && slot.render_texture->generation() != slot.rt_generation)
                 {
-                    RHI::DescriptorBufferInfo buf_info{gpu->ubo_buffer, 0, sizeof(MaterialUBO)};
-                    RHI::DescriptorImageInfo images[5] = {
-                        {gpu->base_color.texture, gpu->base_color.sampler, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1},
-                        {gpu->metallic_roughness.texture, gpu->metallic_roughness.sampler, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1},
-                        {gpu->normal.texture, gpu->normal.sampler, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1},
-                        {gpu->occlusion.texture, gpu->occlusion.sampler, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1},
-                        {gpu->emissive.texture, gpu->emissive.sampler, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1},
-                    };
-                    RHI::WriteDescriptorSet writes[6];
-                    writes[0] = RHI::WriteDescriptorSet{0, 0, 1, RHI::ResourceType::UniformBuffer, &buf_info, nullptr};
-                    for (int i = 0; i < 5; ++i)
-                        writes[i + 1] = RHI::WriteDescriptorSet{(uint32_t)(i + 1), 0, 1, RHI::ResourceType::CombinedImageSampler, nullptr, &images[i]};
-                    gpu->descriptor_set->write(writes, 6);
+                    slot.rt_generation = slot.render_texture->generation();
+                    ++m.texture_revision;
                 }
             }
+            if (m.descriptor_set && m.bound_revision == m.texture_revision) return true;
+            if (!mesh_layout_ || !frames_ || !frames_->uniformBuffer()) return false;
 
-            materials_.push_back(std::move(gpu));
-            return (int32_t)materials_.size() - 1;
-        }
+            RHI::RHIDescriptorSet *set = device_->createDescriptorSet(mesh_layout_, 1);
+            if (!set) return false;
 
-        GpuMaterial *RenderScene::defaultMaterial()
-        {
-            if (default_material_index_ >= 0)
-                return materials_[(size_t)default_material_index_].get();
-            MaterialData m;
-            m.name = "__default_material";
-            m.base_color_factor = Math::Color(0.8f, 0.8f, 0.8f, 1.0f);
-            m.metallic_factor = 0.0f;
-            m.roughness_factor = 0.6f;
-            default_material_index_ = uploadMaterial(m, "");
-            return materials_[(size_t)default_material_index_].get();
-        }
-
-        size_t RenderScene::updateShadingMode(RHI::RHIDevice *device, float shading_mode)
-        {
-            size_t updated = 0;
-            for (auto &m : materials_)
+            auto pick = [&](TextureSlot slot, const GpuTexture &fallback, RHI::RHITexture *&tex, RHI::RHISampler *&samp)
             {
-                if (!m || !m->ubo_buffer) continue;
-                if (m->ubo.params1.w == shading_mode) continue;
-                m->ubo.params1.w = shading_mode;
-                device->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
-                ++updated;
+                const Material::Slot &s = m.slots[(size_t)slot];
+                tex = fallback.texture;
+                samp = fallback.sampler;
+                if (!s.enabled) return;
+                if (s.render_texture && s.render_texture->valid())
+                {
+                    tex = s.render_texture->color();
+                    samp = s.render_texture->sampler();
+                }
+                else if (s.texture.valid())
+                {
+                    tex = s.texture.texture;
+                    samp = s.texture.sampler;
+                }
+            };
+
+            RHI::DescriptorBufferInfo ubo{frames_->uniformBuffer(), 0, sizeof(MaterialUBO)};
+            RHI::DescriptorImageInfo images[5];
+            const GpuTexture *fallbacks[5] = {&texture_cache_.white(), &texture_cache_.grey(), &texture_cache_.flatNormal(),
+                                              &texture_cache_.white(), &texture_cache_.black()};
+            for (uint32_t i = 0; i < 5; ++i)
+            {
+                RHI::RHITexture *tex = nullptr;
+                RHI::RHISampler *samp = nullptr;
+                pick((TextureSlot)i, *fallbacks[i], tex, samp);
+                images[i] = RHI::DescriptorImageInfo{tex, samp, RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1};
             }
-            return updated;
+            RHI::WriteDescriptorSet writes[6];
+            writes[0] = RHI::WriteDescriptorSet{0, 0, 1, RHI::ResourceType::UniformBufferDynamic, &ubo, nullptr};
+            for (uint32_t i = 0; i < 5; ++i)
+                writes[i + 1] = RHI::WriteDescriptorSet{i + 1, 0, 1, RHI::ResourceType::CombinedImageSampler, nullptr, &images[i]};
+            set->write(writes, 6);
+
+            if (m.descriptor_set) frames_->release(m.descriptor_set);
+            m.descriptor_set = set;
+            m.bound_revision = m.texture_revision;
+            return true;
         }
 
         void RenderScene::setMaterialBaseColor(int32_t index, const Math::Color &color)
         {
-            GpuMaterial *m = material(index);
-            if (!m) return;
-            m->ubo.base_color_factor = GpuVec4::from(color);
-            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+            if (Material *m = material(index)) { m->base_color = color; m->touch(); }
         }
 
         void RenderScene::setMaterialPBR(int32_t index, float metallic, float roughness)
         {
-            GpuMaterial *m = material(index);
-            if (!m) return;
-            GpuVec4 p = m->ubo.params0;
-            p.x = metallic;
-            p.y = roughness;
-            m->ubo.params0 = p;
-            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+            if (Material *m = material(index))
+            {
+                m->metallic = metallic;
+                m->roughness = roughness;
+                m->touch();
+            }
         }
 
         void RenderScene::setMaterialEmissive(int32_t index, const Math::Color &color, float strength)
         {
-            GpuMaterial *m = material(index);
-            if (!m) return;
-            m->ubo.emissive_factor = GpuVec4(color.r, color.g, color.b, strength);
-            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+            if (Material *m = material(index))
+            {
+                m->emissive = color;
+                m->emissive_strength = strength;
+                m->touch();
+            }
         }
 
         std::vector<uint32_t> RenderScene::uploadModel(const ModelData &model, const std::string &name_hint)
         {
             std::vector<uint32_t> mesh_indices;
             std::vector<int32_t> material_map(model.materials.size(), -1);
-            for (size_t i = 0; i < model.materials.size(); ++i)
-                material_map[i] = uploadMaterial(model.materials[i], ResourceIO::pathDirectory(model.source_path));
+            for (size_t i = 0; i < model.materials.size(); ++i) material_map[i] = createMaterial(model.materials[i]);
 
             for (size_t i = 0; i < model.meshes.size(); ++i)
             {
@@ -595,7 +562,7 @@ namespace Genesis
                     if (mi >= 0 && (size_t)mi < material_map.size() && material_map[mi] >= 0)
                         meshes_[idx]->material_index = material_map[mi];
                     else
-                        meshes_[idx]->material_index = defaultMaterial() ? (int32_t)(materials_.size() - 1) : -1;
+                        meshes_[idx]->material_index = defaultMaterial()->index;
                 }
                 mesh_indices.push_back(idx);
             }

@@ -12,10 +12,10 @@ namespace Genesis
 {
     namespace
     {
-        void uiPostPresentHook(RHI::RHICommandBuffer *cmd, uint32_t width, uint32_t height, void *user)
+        void uiPostPresentHook(RHI::RHICommandBuffer *cmd, const Render::TargetRef &target, void *user)
         {
             Engine *engine = static_cast<Engine *>(user);
-            if (engine) engine->ui().renderInto(cmd, width, height);
+            if (engine) engine->ui().renderInto(cmd, target);
         }
     } // namespace
 
@@ -38,6 +38,9 @@ namespace Genesis
         wdesc.height = config_.height;
         wdesc.backend = config_.backend;
         wdesc.hidden = config_.headless;
+        // Offscreen renders (tests, screenshots) must produce exactly the
+        // requested pixel size, so Retina backing scale is only used on screen.
+        wdesc.high_dpi = !config_.headless;
         wdesc.resizable = true;
         if (!window_.initialize(wdesc))
         {
@@ -99,7 +102,7 @@ namespace Genesis
         // ---- UI ---------------------------------------------------------
         if (config_.enable_ui)
         {
-            if (!ui_.initialize(device_, window_.handle()))
+            if (!ui_.initialize(device_, render_, window_.handle()))
             {
                 GEN_LOG_WARN("[Engine] UI initialisation failed - continuing without ImGui");
                 config_.enable_ui = false;

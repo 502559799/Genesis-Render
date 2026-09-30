@@ -15,6 +15,8 @@ struct ShaderBinary
     size_t glsl_size;          // bytes, excluding NUL
     const uint32_t *spirv;     // Vulkan variant, nullptr when unavailable
     size_t spirv_words;        // number of 32-bit words
+    const char *msl;           // Metal variant (MSL 2.1, entry main0), nullptr when unavailable
+    size_t msl_size;           // bytes, excluding NUL
 };
 
 // Number of shaders baked into the binary.

@@ -2,31 +2,35 @@
  * Genesis Render - render system
  *
  * Responsibilities
- *   1. Synchronise the ECS world into the GPU-side RenderScene (upload new
- *      meshes/materials, collect lights, pick the active camera).
- *   2. Own every pipeline / descriptor set / render target used by a frame.
+ *   1. Synchronise the ECS world into the GPU-side RenderScene (camera,
+ *      lights, environment / IBL requests, draw items).
+ *   2. Own every resource layout, render target and transient allocator used
+ *      by a frame (pipelines come from the PipelineCache).
  *   3. Bake image based lighting (equirect -> cubemap -> irradiance ->
- *      prefiltered specular -> BRDF LUT) with plain raster passes, so the same
- *      code runs on OpenGL (which has no compute in the 4.1 profile we target)
- *      and Vulkan.
- *   4. Execute the frame: HDR scene pass (skybox + opaque + transparent) then
- *      a tone mapping pass into the present target.
+ *      prefiltered specular -> BRDF LUT) with raster passes, identically on
+ *      OpenGL, Vulkan and Metal.
+ *   4. Execute the frame, either with the built-in forward pipeline (with
+ *      CommandBuffers injected at CameraEvents) or entirely from user
+ *      CommandBuffers (PipelineMode::Custom).
  *
  * Frame orientation
- *   Every offscreen render target uses "row 0 == top of the image" on both
- *   backends.  CameraState::update() applies the required projection Y flip
- *   (always on Vulkan, only for offscreen targets on OpenGL).  The final
- *   present pass into the OpenGL default framebuffer flips the sampling V
- *   coordinate, because GL's window origin is bottom-left.
+ *   Offscreen targets always receive NDC y = -1 in row 0 (the bottom of the
+ *   view) on every backend.  Only when an image is *displayed* (present pass,
+ *   capture readback, 2D screen space drawing, UI) is the orientation of the
+ *   destination taken into account (TargetRef::row0_top).
  */
 #ifndef __GENESIS_RENDER_SYSTEM_HPP__
 #define __GENESIS_RENDER_SYSTEM_HPP__
 
 #include "ecs/components.hpp"
-#include "renderer/overlay_system.hpp"
+#include "renderer/command_buffer.hpp"
+#include "renderer/frame_resources.hpp"
+#include "renderer/pipeline_cache.hpp"
 #include "renderer/render_scene.hpp"
+#include "renderer/render_texture.hpp"
 #include "renderer/render_ubo.hpp"
 #include "rhi/rhi.hpp"
+#include "text/font.hpp"
 
 #include <memory>
 #include <string>
@@ -49,6 +53,11 @@ namespace Genesis
             float saturation = 1.0f;
             float vignette = 0.0f;
 
+            // Built-in post effect applied by the present pass.
+            PostEffect post_effect = PostEffect::None;
+            Math::Vec4 post_params = Math::Vec4(1.0f, 2.0f, 0.0f, 0.0f); // strength, radius / size, extra, extra
+            Math::Color post_tint = Math::Color(1.0f, 0.85f, 0.6f, 1.0f);
+
             Math::Color ambient_color = Math::Color(0.03f, 0.035f, 0.045f);
             float ambient_intensity = 1.0f;
             Math::Color sky_tint = Math::Color(0.35f, 0.55f, 0.95f);
@@ -60,7 +69,9 @@ namespace Genesis
             bool show_skybox = true;
             bool wireframe = false;
             bool frustum_culling = true;
-            bool flip_post_uv = false; // computed per frame from backend + target
+            bool draw_text_components = true;
+
+            PipelineMode pipeline_mode = PipelineMode::Forward;
 
             uint32_t hdr_width = 1280;
             uint32_t hdr_height = 720;
@@ -77,25 +88,14 @@ namespace Genesis
             uint32_t active_lights = 0;
             uint32_t meshes = 0;
             uint32_t materials = 0;
+            uint32_t command_buffers = 0;
+            uint32_t commands = 0;
+            uint32_t batched_quads = 0;
+            uint32_t passes = 0;
             double scene_ms = 0.0;
             double present_ms = 0.0;
+            uint64_t uniform_bytes = 0;
             uint64_t frame_index = 0;
-        };
-
-        //==================================================================
-        // A render target = colour texture(s) + depth texture + pass + FBO
-        //==================================================================
-        struct RenderTarget
-        {
-            RHI::RHITexture *color = nullptr;
-            RHI::RHITexture *depth = nullptr;
-            RHI::RHIRenderPass *pass = nullptr;
-            RHI::RHIFramebuffer *framebuffer = nullptr;
-            uint32_t width = 0;
-            uint32_t height = 0;
-            RHI::PixelFormat color_format = RHI::PixelFormat::RGBA16_SFLOAT;
-            bool valid = false;
-            std::string name;
         };
 
         //==================================================================
@@ -109,18 +109,15 @@ namespace Genesis
             void shutdown();
             void resize(uint32_t width, uint32_t height);
 
-            // Free command-list / programmable post / SDF text subsystem.
-            OverlaySystem &overlay() { return overlay_; }
-
             const char *name() const override { return "RenderSystem"; }
             int32_t order() const override { return 200; }
             void update(ECS::World &world, float delta_time) override;
 
-            // ---- explicit control -------------------------------------
+            // ---- frame -----------------------------------------------
             void syncFromWorld(ECS::World &world, float delta_time);
             void renderFrame(ECS::World &world, float delta_time, bool present_to_swapchain);
-            // Renders the scene into an internal RGBA8 target and reads it back.
-            // Used by the headless verification harness.
+            // Renders into an internal RGBA8 target and reads it back
+            // (row 0 = top of the image).  Used by tests and screenshots.
             bool renderAndCapture(ECS::World &world, float delta_time,
                                   std::vector<uint8_t> &rgba_out, uint32_t &width, uint32_t &height);
 
@@ -131,10 +128,14 @@ namespace Genesis
             const RenderStats &stats() const { return stats_; }
             CameraState &camera() { return camera_; }
             RHI::RHIDevice *device() { return device_; }
-            const RenderTarget &hdrTarget() const { return hdr_target_; }
+            FrameAllocator &frames() { return frames_; }
+            PipelineCache &pipelines() { return pipelines_; }
+            Text::Font *font() { return font_.ready() ? &font_ : nullptr; }
+            const RenderTexturePtr &hdrTarget() const { return hdr_target_; }
             bool iblReady() const { return ibl_ready_; }
+            ECS::World *currentWorld() const { return world_; }
 
-            // ---- IBL --------------------------------------------------
+            // ---- IBL -------------------------------------------------
             struct IblBakeSettings
             {
                 uint32_t cubemap_size = 256;
@@ -146,14 +147,12 @@ namespace Genesis
             };
             bool bakeIBL(const std::string &hdr_equirect_path, const IblBakeSettings &settings);
             bool bakeIBLFromImage(const ImageData &image, const IblBakeSettings &cfg);
-            const std::string &environmentSource() const { return env_source_path_; }
-            // Procedural fallback: bake from a CPU generated gradient sky.
             bool bakeProceduralIBL(const IblBakeSettings &settings);
+            const std::string &environmentSource() const { return env_source_path_; }
             void releaseIBL();
 
-            // ---- GPU upload helpers -----------------------------------
+            // ---- scene registration ----------------------------------
             uint32_t registerModel(const ModelData &model, const std::string &name_hint = "");
-            // Associates an ECS entity with previously registered mesh indices.
             struct EntityMeshBinding
             {
                 ECS::Entity entity;
@@ -162,114 +161,106 @@ namespace Genesis
             };
             void bindEntityMeshes(const EntityMeshBinding &binding);
             const std::unordered_map<uint32_t, EntityMeshBinding> &bindings() const { return bindings_; }
+            const EntityMeshBinding *binding(ECS::Entity e) const;
 
-            // Fullscreen quad (position vec2 + uv vec2), shared by every pass.
-            RHI::RHIBuffer *fullscreenQuadBuffer() const { return quad_vb_; }
-            uint32_t fullscreenQuadVertexCount() const { return 6; }
+            // ---- programmable rendering ------------------------------
+            RenderTexturePtr createRenderTexture(const std::string &name, uint32_t width, uint32_t height,
+                                                 bool hdr = false, bool depth = true);
+            void addCommandBuffer(CameraEvent event, const CommandBufferPtr &cb);
+            void removeCommandBuffer(CameraEvent event, const CommandBufferPtr &cb);
+            void clearCommandBuffers();
+            const std::vector<CommandBufferPtr> &commandBuffers(CameraEvent event) const
+            {
+                return injected_[(size_t)event];
+            }
+            // Executed once, next frame (Forward: before post; Custom: in
+            // submission order), then dropped.
+            void executeCommandBuffer(const CommandBufferPtr &cb);
+            // Command buffers that build the whole frame in PipelineMode::Custom.
+            void addCustomCommandBuffer(const CommandBufferPtr &cb);
+            void removeCustomCommandBuffer(const CommandBufferPtr &cb);
+            const std::vector<CommandBufferPtr> &customCommandBuffers() const { return custom_; }
+            // Per-frame immediate buffers (cleared after each frame).
+            CommandBuffer &immediate(CameraEvent event) { return immediate_[(size_t)event]; }
 
-            // Called inside the present render pass right after tone mapping,
-            // so the UI can be composited without a second pass instance.
-            using PostPresentCallback = void (*)(RHI::RHICommandBuffer *cmd, uint32_t width, uint32_t height, void *user);
+            // Descriptor set binding `texture` for a batch / UI draw (cached,
+            // released automatically when the texture goes away).
+            RHI::RHIDescriptorSet *textureSet(RHI::RHIResourceLayout *layout, RHI::RHITexture *texture,
+                                              RHI::RHISampler *sampler, bool dynamic_ubo_at_binding0);
+            void forgetTexture(RHI::RHITexture *texture);
+
+            // UI hook, called inside the final pass on the presented image.
+            using PostPresentCallback = void (*)(RHI::RHICommandBuffer *cmd, const TargetRef &target, void *user);
             void setPostPresentCallback(PostPresentCallback cb, void *user)
             {
                 post_present_callback_ = cb;
                 post_present_user_ = user;
             }
 
-            // Debug drawing (immediate mode lines, flushed at the end of the frame)
+            // ---- debug drawing (flushed every frame) -----------------
             void drawLine(const Math::Vec3 &a, const Math::Vec3 &b, const Math::Color &color);
             void drawBox(const Math::AABB &box, const Math::Color &color);
             void drawSphere(const Math::Vec3 &center, float radius, const Math::Color &color, int segments = 24);
             void clearDebugLines();
 
+            // Layouts shared with the UI renderer.
+            RHI::RHIResourceLayout *uiLayout() const { return ui_layout_; }
+            RHI::RHIResourceLayout *batchLayout() const { return batch_layout_; }
+            RHI::RHISampler *linearClampSampler() const { return linear_clamp_; }
+
         private:
-            bool createPipelines();
-            bool createIBLPipelines(RHI::PixelFormat cube_format, RHI::PixelFormat lut_format);
-            // The tone mapping pipeline is created per colour format because a
-            // Vulkan pipeline must be compatible with the render pass it is
-            // used in (the swapchain may be BGRA8 while the capture target is
-            // RGBA8).
-            RHI::RHIPipeline *presentPipeline(RHI::PixelFormat color_format);
-            bool createPersistentResources();
+            friend class FrameExecutor;
+
+            bool createLayouts();
             bool createTargets(uint32_t width, uint32_t height);
             void destroyTargets();
-            bool createRenderTarget(RenderTarget &target, const std::string &name, uint32_t width, uint32_t height,
-                                    RHI::PixelFormat color_format, bool with_depth);
             RHI::RHIFramebuffer *faceFramebuffer(RHI::RHITexture *texture, uint32_t mip, uint32_t layer,
                                                  RHI::PixelFormat format, const std::string &name);
-
-            void updatePerFrameUBO(float delta_time);
-            void updateLightsUBO(ECS::World &world);
-            void updateEnvironmentUBO();
-            void gatherRenderItems(ECS::World &world);
-
-            void renderScenePass(RHI::RHICommandBuffer *cmd, RHI::RHIRenderPass *pass, RHI::RHIFramebuffer *fb,
-                                 uint32_t width, uint32_t height, const Math::Color &clear_color);
-            void renderPresentPass(RHI::RHICommandBuffer *cmd, RHI::RHIRenderPass *pass, RHI::RHIFramebuffer *fb,
-                                   uint32_t width, uint32_t height, bool flip_uv);
-            void renderDebugLines(RHI::RHICommandBuffer *cmd);
-
-            void syncMaterialSettings();
-            void writeSceneDescriptorSet();
-            void writeSkyboxDescriptorSet();
             RHI::RHITexture *createCubeTexture(uint32_t size, uint32_t mips, const std::string &name,
                                                RHI::PixelFormat &format_inout);
-            void writePerDrawDescriptorSet();
-            uint64_t allocatePerDrawSlot();
-            void *perDrawSlotPointer(uint64_t offset);
+            void writeSceneDescriptorSet();
+            void writeSkyboxDescriptorSet();
+            void executeFrame(RHI::RHICommandBuffer *cmd, ECS::World &world, float delta_time, const TargetRef &present,
+                              bool run_ui);
+            void finishFrame();
+            TargetRef swapchainTarget();
 
             RHI::RHIDevice *device_ = nullptr;
             std::unique_ptr<RenderScene> scene_;
             RenderSettings settings_;
             RenderStats stats_;
             CameraState camera_;
+            FrameAllocator frames_;
+            PipelineCache pipelines_;
+            Text::Font font_;
+            ECS::World *world_ = nullptr;
             bool initialized_ = false;
             bool ibl_ready_ = false;
+            double time_ = 0.0;
+            uint64_t exec_serial_ = 0;       // unique per executed frame (material UBO caching)
+            float camera_aspect_override_ = 0.0f;
 
             // Resource layouts
-            RHI::RHIResourceLayout *mesh_layout_ = nullptr;    // combined sets 0..2 used by mesh pipelines
-            RHI::RHIResourceLayout *scene_layout_ = nullptr;   // set 0 for mesh/skybox pipelines
-            RHI::RHIResourceLayout *material_layout_ = nullptr; // set 1 for mesh pipelines
-            RHI::RHIResourceLayout *per_draw_layout_ = nullptr; // set 2 for mesh pipelines
-            RHI::RHIResourceLayout *skybox_layout_ = nullptr;   // set 1 for the skybox pipeline
-            RHI::RHIResourceLayout *post_layout_ = nullptr;     // set 0 for tone mapping
-            RHI::RHIResourceLayout *ibl_layout_ = nullptr;      // set 0 for IBL bakes
-            RHI::RHIResourceLayout *line_layout_ = nullptr;     // push constants only
+            RHI::RHIResourceLayout *mesh_layout_ = nullptr;   // sets 0..2 of the mesh pipelines
+            RHI::RHIResourceLayout *skybox_layout_ = nullptr; // set 0 scene + set 1 sky textures
+            RHI::RHIResourceLayout *post_layout_ = nullptr;   // set 0: PostParams (dyn) + source
+            RHI::RHIResourceLayout *ibl_layout_ = nullptr;    // set 0: IBLParams (dyn) + sources
+            RHI::RHIResourceLayout *line_layout_ = nullptr;   // push constants only
+            RHI::RHIResourceLayout *batch_layout_ = nullptr;  // set 0: BatchParams (dyn) + texture
+            RHI::RHIResourceLayout *ui_layout_ = nullptr;     // push constants + texture
 
-            // Pipelines
-            RHI::RHIPipeline *pbr_opaque_ = nullptr;
-            RHI::RHIPipeline *pbr_opaque_two_sided_ = nullptr;
-            RHI::RHIPipeline *pbr_alpha_mask_ = nullptr;
-            RHI::RHIPipeline *pbr_blend_ = nullptr;
-            RHI::RHIPipeline *skybox_pipeline_ = nullptr;
-            RHI::RHIPipeline *tonemap_pipeline_ = nullptr;
-            std::unordered_map<uint32_t, RHI::RHIPipeline *> present_pipelines_;
-            RHI::RHIPipeline *unlit_pipeline_ = nullptr;
-            RHI::RHIPipeline *line_pipeline_ = nullptr;
-            RHI::RHIPipeline *ibl_equirect_pipeline_ = nullptr;
-            RHI::RHIPipeline *ibl_irradiance_pipeline_ = nullptr;
-            RHI::RHIPipeline *ibl_prefilter_pipeline_ = nullptr;
-            RHI::RHIPipeline *ibl_brdf_pipeline_ = nullptr;
-
-            // Descriptor sets
+            // Long lived descriptor sets (immutable while frames are in flight)
             RHI::RHIDescriptorSet *scene_set_ = nullptr;
             RHI::RHIDescriptorSet *per_draw_set_ = nullptr;
             RHI::RHIDescriptorSet *skybox_set_ = nullptr;
-            RHI::RHIDescriptorSet *post_set_ = nullptr;
-            RHI::RHIDescriptorSet *ibl_set_ = nullptr;
-
-            // Uniform buffers
-            RHI::RHIBuffer *per_frame_ubo_ = nullptr;
-            RHI::RHIBuffer *lights_ubo_ = nullptr;
-            RHI::RHIBuffer *environment_ubo_ = nullptr;
-            RHI::RHIBuffer *per_draw_ring_ = nullptr;
-            RHI::RHIBuffer *post_ubo_ = nullptr;
-            RHI::RHIBuffer *ibl_ubo_ = nullptr;
-            uint64_t per_draw_stride_ = 256;
-            uint64_t per_draw_offset_ = 0;
-            uint64_t per_draw_frame_base_ = 0;
-            float last_shading_mode_ = -1.0f;
-            static constexpr uint32_t kPerDrawSlots = 4096;
+            RHI::RHIDescriptorSet *ibl_set_equirect_ = nullptr;
+            RHI::RHIDescriptorSet *ibl_set_cube_ = nullptr;
+            struct TextureSetEntry
+            {
+                RHI::RHIDescriptorSet *set = nullptr;
+                RHI::RHITexture *texture = nullptr;
+            };
+            std::unordered_map<uint64_t, TextureSetEntry> texture_sets_;
 
             // IBL resources
             RHI::RHITexture *env_equirect_ = nullptr;
@@ -278,29 +269,36 @@ namespace Genesis
             RHI::RHITexture *prefiltered_cubemap_ = nullptr;
             RHI::RHITexture *brdf_lut_ = nullptr;
             RHI::RHISampler *ibl_sampler_ = nullptr;
+            RHI::RHISampler *linear_clamp_ = nullptr;
             uint32_t prefilter_mip_levels_ = 1;
             std::string env_source_path_;
+            std::unordered_map<uint64_t, RHI::RHIFramebuffer *> face_framebuffers_;
 
             // Targets
-            RenderTarget hdr_target_;
-            RenderTarget capture_target_; // RGBA8, used by renderAndCapture
-            std::unordered_map<uint64_t, RHI::RHIFramebuffer *> face_framebuffers_;
+            RenderTexturePtr hdr_target_;     // camera HDR scene colour + depth
+            RenderTexturePtr capture_target_; // RGBA8, row 0 = top (renderAndCapture)
+            std::vector<std::weak_ptr<RenderTexture>> render_textures_;
+            RHI::RHIRenderPass *swapchain_load_pass_ = nullptr;
+            RHI::PixelFormat swapchain_load_format_ = RHI::PixelFormat::Undefined;
+            std::vector<RenderTexturePtr> scratch_targets_; // blit ping-pong targets
 
             // Fullscreen quad
             RHI::RHIBuffer *quad_vb_ = nullptr;
+            RHI::RHITexture *white_ = nullptr; // 1x1 white for untextured batches
 
-            // Per-frame draw list
+            // Draw lists of the main camera
             std::vector<RenderItem> opaque_items_;
             std::vector<RenderItem> transparent_items_;
             std::unordered_map<uint32_t, EntityMeshBinding> bindings_;
-            std::vector<ECS::Entity> pending_destroy_;
+
+            // Programmable rendering
+            std::vector<CommandBufferPtr> injected_[(size_t)CameraEvent::Count];
+            std::vector<CommandBufferPtr> once_;
+            std::vector<CommandBufferPtr> custom_;
+            CommandBuffer immediate_[(size_t)CameraEvent::Count];
 
             PostPresentCallback post_present_callback_ = nullptr;
             void *post_present_user_ = nullptr;
-
-            // Free command-list + programmable post + SDF text.
-            OverlaySystem overlay_;
-            bool overlay_enabled_ = false;
 
             // Debug lines
             struct DebugVertex
@@ -309,8 +307,6 @@ namespace Genesis
                 float color[4];
             };
             std::vector<DebugVertex> debug_vertices_;
-            RHI::RHIBuffer *debug_vb_ = nullptr;
-            uint64_t debug_vb_capacity_ = 0;
         };
 
     } // namespace Render

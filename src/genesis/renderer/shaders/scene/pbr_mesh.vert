@@ -30,10 +30,7 @@ void main()
     tangent = normalize(tangent - v_normal * dot(v_normal, tangent));
     v_tangent = vec4(tangent, a_tangent.w);
 
-    vec2 uv_scale = vec2(u_material_extra.y, u_material_extra.z);
-    if (dot(uv_scale, uv_scale) < 1e-6)
-        uv_scale = vec2(1.0);
-    v_uv0 = a_uv0 * uv_scale + u_object_params.zw;
+    v_uv0 = a_uv0 * u_uv_transform.xy + u_uv_transform.zw;
     v_uv1 = a_uv1;
 
     gl_Position = u_view_projection * world_position;

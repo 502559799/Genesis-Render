@@ -206,6 +206,31 @@ namespace Genesis
         };
 
         //==================================================================
+        // SDF text label drawn by the renderer at the entity transform.
+        //   world space (default): `size` in world units, camera facing when
+        //                          `billboard`, otherwise in the entity's XY
+        //                          plane;
+        //   screen space         : anchored at the projected entity position
+        //                          plus `offset.xy` pixels, `size` in pixels.
+        //==================================================================
+        struct TextComponent
+        {
+            static constexpr const char *kComponentName = "Text";
+
+            std::string text = "Text";
+            float size = 0.25f;
+            Math::Color color = Math::Color(1.0f, 1.0f, 1.0f, 1.0f);
+            float outline = 0.0f; // outline width as a fraction of the SDF range (0..0.4)
+            Math::Color outline_color = Math::Color(0.0f, 0.0f, 0.0f, 1.0f);
+            Math::Vec3 offset = Math::Vec3(0.0f);
+            uint32_t align = 1; // 0 left, 1 centre, 2 right
+            bool billboard = true;
+            bool screen_space = false;
+            bool depth_test = true;
+            bool visible = true;
+        };
+
+        //==================================================================
         // Tag / metadata (handy for tests, editor filtering and Lua queries)
         //==================================================================
         struct TagComponent

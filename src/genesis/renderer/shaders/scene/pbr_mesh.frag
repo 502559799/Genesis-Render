@@ -98,8 +98,16 @@ void main()
     if (u_material_params1.z > 0.5 && dot(N, V) < 0.0)
         N = -N;
 
+    int shading_model = int(u_material_params1.w + 0.5);
+    if (shading_model == GS_SHADING_UNLIT)
+    {
+        // Unlit: base colour (x texture) + emissive, no lights, no IBL.
+        out_color = vec4(max(base_color.rgb * occlusion + emissive, vec3(0.0)), alpha);
+        return;
+    }
+
     PbrSurface surface = gsMakeSurface(N, V, base_color.rgb, metallic, roughness,
-                                       occlusion, emissive, int(u_material_params1.w + 0.5));
+                                       occlusion, emissive, shading_model);
 
     vec3 color = vec3(0.0);
 

@@ -26,7 +26,7 @@ namespace Genesis
 #if GENESIS_RHI_METAL
             if (desc.backend == BackendType::Metal)
             {
-                MetalDeviceRHI *device = new MetalDeviceRHI();
+                RHIDevice *device = createMetalDevice();
                 if (!device->initialize(desc))
                 {
                     GEN_LOG_ERROR("[RHI] Metal backend initialisation failed");

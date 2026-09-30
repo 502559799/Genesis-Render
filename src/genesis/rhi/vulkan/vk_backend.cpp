@@ -342,8 +342,25 @@ namespace Genesis
             info_.supports_tessellation = device_features.tessellationShader == VK_TRUE;
             info_.supports_multisample = true;
             info_.supports_srgb_framebuffer = true;
+            info_.clip_depth_zero_to_one = true;
+            info_.present_row0_top = true;
+            info_.frames_in_flight = VK_MAX_FRAMES_IN_FLIGHT;
+            // D24S8 is optional in Vulkan (Apple GPUs behind MoltenVK lack it);
+            // pick the first depth-stencil format that can be rendered to.
+            info_.depth_format = PixelFormat::D32_SFLOAT;
+            for (PixelFormat candidate : {PixelFormat::D24_UNORM_S8_UINT, PixelFormat::D32_SFLOAT_S8_UINT})
+            {
+                VkFormatProperties fp;
+                vkGetPhysicalDeviceFormatProperties(physical_device_, vkPixelFormat(candidate), &fp);
+                if (fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                {
+                    info_.depth_format = candidate;
+                    break;
+                }
+            }
 
-            GEN_LOG_INFO("[VK] device: %s (Vulkan %s)", info_.device_name.c_str(), info_.api_version.c_str());
+            GEN_LOG_INFO("[VK] device: %s (Vulkan %s), depth format %u", info_.device_name.c_str(),
+                         info_.api_version.c_str(), (unsigned)info_.depth_format);
 
             if (desc_.native_window)
             {
@@ -793,39 +810,15 @@ namespace Genesis
 
             createSwapchainRenderPass();
 
-            // Depth attachment shared by all swapchain images.
-            TextureDesc depth_desc;
-            depth_desc.type = TextureType::Tex2D;
-            depth_desc.format = PixelFormat::D24_UNORM_S8_UINT;
-            // Not every implementation supports D24S8; fall back to D32F.
-            VkFormatProperties fp;
-            vkGetPhysicalDeviceFormatProperties(physical_device_, VK_FORMAT_D24_UNORM_S8_UINT, &fp);
-            if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
-                depth_desc.format = PixelFormat::D32_SFLOAT;
-            depth_desc.width = extent.width;
-            depth_desc.height = extent.height;
-            depth_desc.mip_levels = 1;
-            depth_desc.usage = (uint32_t)TextureUsageFlagBits::DepthStencil;
-            depth_desc.name = "swapchain-depth";
-            VkTextureRHI *depth_tex = static_cast<VkTextureRHI *>(createTexture(depth_desc));
-
+            // The present pass is colour only (tone mapping, 2D overlays and UI).
             swapchain_framebuffers_.resize(image_count);
             for (uint32_t i = 0; i < image_count; ++i)
             {
-                FramebufferDesc fbd;
-                fbd.render_pass = swapchain_render_pass_->desc_;
-                fbd.width = extent.width;
-                fbd.height = extent.height;
-                fbd.name = "swapchain-fb";
-                fbd.attachments.resize(2);
-                fbd.attachments[0].texture = nullptr; // set below: raw image view
-                fbd.attachments[1].texture = depth_tex;
-
-                VkImageView attachments[2] = {swapchain_image_views_[i], depth_tex->view};
+                VkImageView attachments[1] = {swapchain_image_views_[i]};
                 VkFramebufferCreateInfo fci{};
                 fci.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
                 fci.renderPass = swapchain_render_pass_->render_pass;
-                fci.attachmentCount = 2;
+                fci.attachmentCount = 1;
                 fci.pAttachments = attachments;
                 fci.width = extent.width;
                 fci.height = extent.height;
@@ -841,8 +834,8 @@ namespace Genesis
                 fb->w = extent.width;
                 fb->h = extent.height;
                 fb->fb_name = "swapchain-fb";
+                fb->attachment_textures.assign(1, nullptr);
                 swapchain_framebuffers_[i] = fb;
-                framebuffers_.push_back(fb);
             }
             return true;
         }
@@ -852,25 +845,13 @@ namespace Genesis
             if (swapchain_render_pass_) return;
             RenderPassDesc rpd;
             rpd.name = "swapchain";
-            rpd.attachment_count = 2;
+            rpd.attachment_count = 1;
             rpd.attachments[0].format = swapchain_format_rhi_;
             rpd.attachments[0].load_op = LoadOp::Clear;
             rpd.attachments[0].store_op = StoreOp::Store;
             rpd.attachments[0].initial_layout = TextureLayout::Undefined;
             rpd.attachments[0].final_layout = TextureLayout::PresentSrc;
             rpd.attachments[0].is_depth_stencil = false;
-            rpd.attachments[1].format = PixelFormat::D24_UNORM_S8_UINT;
-            VkFormatProperties fp;
-            vkGetPhysicalDeviceFormatProperties(physical_device_, VK_FORMAT_D24_UNORM_S8_UINT, &fp);
-            if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
-                rpd.attachments[1].format = PixelFormat::D32_SFLOAT;
-            rpd.attachments[1].load_op = LoadOp::Clear;
-            rpd.attachments[1].store_op = StoreOp::DontCare;
-            rpd.attachments[1].stencil_load_op = LoadOp::Clear;
-            rpd.attachments[1].stencil_store_op = StoreOp::DontCare;
-            rpd.attachments[1].initial_layout = TextureLayout::Undefined;
-            rpd.attachments[1].final_layout = TextureLayout::DepthStencilAttachmentOptimal;
-            rpd.attachments[1].is_depth_stencil = true;
             swapchain_render_pass_ = static_cast<VkRenderPassRHI *>(createRenderPass(rpd));
         }
 
@@ -913,18 +894,6 @@ namespace Genesis
             VkRenderPassRHI *keep_pass = swapchain_render_pass_;
             swapchain_render_pass_ = nullptr;
             destroySwapchainObjects();
-            // destroy the depth texture(s) that belonged to the old framebuffers
-            for (auto it = textures_.begin(); it != textures_.end();)
-            {
-                if ((*it)->desc_.name == "swapchain-depth")
-                {
-                    vmaDestroyImage(vmaAlloc(vma_allocator_), (*it)->image, vmaAllocOf((*it)->allocation));
-                    vkDestroyImageView(device_, (*it)->view, nullptr);
-                    delete *it;
-                    it = textures_.erase(it);
-                }
-                else ++it;
-            }
             if (keep_pass)
             {
                 destroyRenderPass(keep_pass);
@@ -1033,10 +1002,10 @@ namespace Genesis
             for (auto *p : framebuffers_)
             {
                 if (p->framebuffer) vkDestroyFramebuffer(device_, p->framebuffer, nullptr);
+                for (VkImageView v : p->owned_views) vkDestroyImageView(device_, v, nullptr);
                 delete p;
             }
             framebuffers_.clear();
-            swapchain_framebuffers_.clear();
             for (auto &kv : render_passes_)
             {
                 if (kv.second->render_pass) vkDestroyRenderPass(device_, kv.second->render_pass, nullptr);
@@ -1045,18 +1014,12 @@ namespace Genesis
             render_passes_.clear();
             swapchain_render_pass_ = nullptr;
 
-            for (auto *p : pipelines_) delete p;
-            pipelines_.clear();
-            for (auto *p : layouts_) delete p;
-            layouts_.clear();
-            for (auto *p : shaders_) delete p;
-            shaders_.clear();
-            for (auto *p : samplers_) delete p;
-            samplers_.clear();
-            for (auto *p : textures_) delete p;
-            textures_.clear();
-            for (auto *p : buffers_) delete p;
-            buffers_.clear();
+            while (!pipelines_.empty()) destroyPipeline(pipelines_.back());
+            while (!layouts_.empty()) destroyResourceLayout(layouts_.back());
+            while (!shaders_.empty()) destroyShader(shaders_.back());
+            while (!samplers_.empty()) destroySampler(samplers_.back());
+            while (!textures_.empty()) destroyTexture(textures_.back());
+            while (!buffers_.empty()) destroyBuffer(buffers_.back());
 
             for (uint32_t i = 0; i < image_available_.size(); ++i)
             {
@@ -1232,10 +1195,7 @@ namespace Genesis
                 return nullptr;
             }
 
-            tex->layout_ = (desc.usage & (uint32_t)TextureUsageFlagBits::DepthStencil)
-                               ? TextureLayout::DepthStencilAttachmentOptimal
-                               : ((desc.usage & (uint32_t)TextureUsageFlagBits::RenderTarget) ? TextureLayout::ColorAttachmentOptimal
-                                                                                              : TextureLayout::Undefined);
+            tex->layout_ = TextureLayout::Undefined;
             textures_.push_back(tex);
             return tex;
         }
@@ -1412,15 +1372,30 @@ namespace Genesis
             subpass.pColorAttachments = color_refs.empty() ? nullptr : color_refs.data();
             if (has_depth) subpass.pDepthStencilAttachment = &depth_ref;
 
-            std::vector<VkSubpassDependency> dependencies;
-            VkSubpassDependency dep{};
-            dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-            dep.dstSubpass = 0;
-            dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            dep.srcAccessMask = 0;
-            dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-            dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            dependencies.push_back(dep);
+            // Passes are chained freely (render -> sample -> render, blits,
+            // readbacks), so order every attachment write against earlier
+            // attachment/shader/transfer work and make it visible to later
+            // sampling and copies.
+            const VkPipelineStageFlags attachment_stages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+                                                           VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            const VkAccessFlags attachment_access = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                                                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+                                                    VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            std::vector<VkSubpassDependency> dependencies(2);
+            dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+            dependencies[0].dstSubpass = 0;
+            dependencies[0].srcStageMask = attachment_stages | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+                                            VK_ACCESS_TRANSFER_WRITE_BIT;
+            dependencies[0].dstStageMask = attachment_stages | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dependencies[0].dstAccessMask = attachment_access | VK_ACCESS_SHADER_READ_BIT;
+            dependencies[1].srcSubpass = 0;
+            dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+            dependencies[1].srcStageMask = attachment_stages;
+            dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT | attachment_stages;
+            dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT | attachment_access;
 
             VkRenderPassCreateInfo ci{};
             ci.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -1643,7 +1618,11 @@ namespace Genesis
             raster.polygonMode = desc.rasterizer.polygon_mode == PolygonMode::Line ? VK_POLYGON_MODE_LINE
                                  : (desc.rasterizer.polygon_mode == PolygonMode::Point ? VK_POLYGON_MODE_POINT : VK_POLYGON_MODE_FILL);
             raster.cullMode = vkCull(desc.rasterizer.cull_mode);
-            raster.frontFace = desc.rasterizer.front_face == FrontFace::CounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+            // The engine keeps GL-style projections (NDC y up, never flipped)
+            // on every backend.  Vulkan evaluates winding in framebuffer space
+            // whose y axis points down, so an engine counter-clockwise front
+            // face is clockwise here.
+            raster.frontFace = desc.rasterizer.front_face == FrontFace::CounterClockwise ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
             raster.depthBiasEnable = VK_FALSE;
             raster.lineWidth = desc.rasterizer.line_width;
 
@@ -1666,8 +1645,9 @@ namespace Genesis
             depth_stencil.back = depth_stencil.front;
 
             std::vector<VkPipelineColorBlendAttachmentState> blend_attachments;
-            for (uint32_t i = 0; i < std::max(1u, desc.color_format_count); ++i)
+            for (uint32_t i = 0; i < desc.color_format_count && i < 8; ++i)
             {
+                if (desc.color_formats[i] == PixelFormat::Undefined) continue;
                 const BlendAttachmentState &src = desc.blend.attachments[std::min(i, desc.blend.attachment_count - 1)];
                 VkPipelineColorBlendAttachmentState att{};
                 att.blendEnable = src.blend_enable ? VK_TRUE : VK_FALSE;
@@ -1729,26 +1709,24 @@ namespace Genesis
             if (!pass) return nullptr;
 
             std::vector<VkImageView> views;
+            std::vector<VkImageView> owned_views;
+            std::vector<VkTextureRHI *> attachment_textures;
             for (const auto &a : desc.attachments)
             {
                 VkTextureRHI *tex = static_cast<VkTextureRHI *>(a.texture);
                 if (!tex) continue;
-                if (a.mip_level == 0 && a.array_layer == 0 && tex->mipLevels() == desc.render_pass.attachment_count)
+                attachment_textures.push_back(tex);
+                // Framebuffer attachments must be single-mip, single-layer views.
+                if (tex->mipLevels() == 1 && tex->layerCount() == 1)
                 {
                     views.push_back(tex->view);
                     continue;
                 }
-                if (a.mip_level == 0 && a.array_layer == 0 && tex->layerCount() == 1)
-                {
-                    views.push_back(tex->view);
-                    continue;
-                }
-                // Need a dedicated view for a specific mip / layer.
                 VkImageViewCreateInfo vci{};
                 vci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
                 vci.image = tex->image;
                 vci.format = vkPixelFormat(tex->format());
-                vci.viewType = tex->desc_.type == TextureType::TexCube ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D;
+                vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
                 vci.subresourceRange.aspectMask = vkAspectMask(tex->format());
                 vci.subresourceRange.baseMipLevel = a.mip_level;
                 vci.subresourceRange.levelCount = 1;
@@ -1758,9 +1736,11 @@ namespace Genesis
                 if (vkCreateImageView(device_, &vci, nullptr, &view) != VK_SUCCESS)
                 {
                     GEN_LOG_ERROR("[VK] framebuffer '%s': image view creation failed", desc.name.c_str());
+                    for (VkImageView v : owned_views) vkDestroyImageView(device_, v, nullptr);
                     return nullptr;
                 }
                 views.push_back(view);
+                owned_views.push_back(view);
             }
 
             VkFramebufferCreateInfo ci{};
@@ -1777,9 +1757,12 @@ namespace Genesis
             fb->w = desc.width;
             fb->h = desc.height;
             fb->fb_name = desc.name;
+            fb->attachment_textures = attachment_textures;
+            fb->owned_views = owned_views;
             if (vkCreateFramebuffer(device_, &ci, nullptr, &fb->framebuffer) != VK_SUCCESS)
             {
                 GEN_LOG_ERROR("[VK] framebuffer '%s' creation failed", desc.name.c_str());
+                for (VkImageView v : owned_views) vkDestroyImageView(device_, v, nullptr);
                 delete fb;
                 return nullptr;
             }
@@ -1919,6 +1902,7 @@ namespace Genesis
             VkFramebufferRHI *fb = static_cast<VkFramebufferRHI *>(p);
             if (!fb || !vkErase(framebuffers_, fb)) return;
             if (fb->framebuffer) vkDestroyFramebuffer(device_, fb->framebuffer, nullptr);
+            for (VkImageView v : fb->owned_views) vkDestroyImageView(device_, v, nullptr);
             delete fb;
         }
 

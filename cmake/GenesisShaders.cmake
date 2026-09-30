@@ -5,6 +5,7 @@
 #  into two variants by scripts/build_shaders.py:
 #     * GLSL 410 source  -> embedded as a C string   (OpenGL backend)
 #     * SPIR-V (Vulkan 1.1) -> embedded as uint32_t[] (Vulkan backend)
+#     * MSL 2.1 (SPIRV-Cross) -> embedded as a C string   (Metal backend)
 #
 #  The generated files are committed to the repository, so a machine without
 #  Python or the Vulkan SDK can still build the engine.  Set
@@ -24,6 +25,12 @@ function(genesis_configure_shaders)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     find_program(GLSLANG_VALIDATOR NAMES glslangValidator glslang glslc
                  HINTS ENV VULKAN_SDK PATH_SUFFIXES bin Bin)
+    find_program(SPIRV_CROSS_EXECUTABLE NAMES spirv-cross
+                 HINTS ENV VULKAN_SDK PATH_SUFFIXES bin Bin)
+    set(_spirv_cross_args "")
+    if(SPIRV_CROSS_EXECUTABLE)
+        set(_spirv_cross_args --spirv-cross ${SPIRV_CROSS_EXECUTABLE})
+    endif()
 
     set(_want_rebuild OFF)
     if(GENESIS_REBUILD_SHADERS STREQUAL "ON")
@@ -49,7 +56,7 @@ function(genesis_configure_shaders)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/build_shaders.py
                     --shader-dir ${GENESIS_SHADER_DIR}
                     --out-dir ${GENESIS_SHADER_GEN_DIR}
-                    --glslang ${GLSLANG_VALIDATOR}
+                    --glslang ${GLSLANG_VALIDATOR} ${_spirv_cross_args}
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             RESULT_VARIABLE _shader_result
             OUTPUT_VARIABLE _shader_output
@@ -68,7 +75,7 @@ function(genesis_configure_shaders)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/build_shaders.py
                     --shader-dir ${GENESIS_SHADER_DIR}
                     --out-dir ${GENESIS_SHADER_GEN_DIR}
-                    --glslang ${GLSLANG_VALIDATOR}
+                    --glslang ${GLSLANG_VALIDATOR} ${_spirv_cross_args}
             DEPENDS ${GENESIS_SHADER_SOURCES} ${CMAKE_SOURCE_DIR}/scripts/build_shaders.py
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             COMMENT "Regenerating shader headers (GLSL + SPIR-V)"

@@ -1,21 +1,37 @@
 /*
- * Genesis Render - internal helpers shared by the render system translation units
+ * Genesis Render - internal helpers shared by the renderer translation units
  */
 #ifndef __GENESIS_RENDER_INTERNAL_HPP__
 #define __GENESIS_RENDER_INTERNAL_HPP__
 
 #include "foundation_layer/genesis_log.hpp"
-#include "renderer/render_system.hpp"
+#include "resource/resource_types.hpp"
 #include "rhi/rhi.hpp"
 
 #include "genesis_shaders_generated.h"
+
+#include <cstddef>
 
 namespace Genesis
 {
     namespace Render
     {
+        // One vertex of the batched 2D / 3D primitive and SDF text renderer
+        // (shaders/ui/batch.vert).
+        struct BatchVertex
+        {
+            float position[3];
+            float uv[2];
+            float color[4];
+            float params[4];  // x = kind (0 textured, 1 SDF glyph), y = outline width
+            float outline[4]; // SDF outline colour
+        };
+        static_assert(sizeof(BatchVertex) == 68, "BatchVertex: 12 + 8 + 16 + 16 + 16");
+
         namespace detail
         {
+            // Picks the variant of a baked shader that matches the backend:
+            // GLSL 410 source (OpenGL), SPIR-V (Vulkan) or MSL (Metal).
             inline bool fillShaderStage(const char *shader_name, RHI::BackendType backend,
                                         RHI::ShaderStageFlagBits stage, RHI::ShaderStageDesc &out)
             {
@@ -39,6 +55,19 @@ namespace Genesis
                     out.code_type = RHI::ShaderCodeType::Spirv;
                     out.code = binary->spirv;
                     out.code_size = binary->spirv_words * sizeof(uint32_t);
+                }
+                else if (backend == RHI::BackendType::Metal)
+                {
+                    if (!binary->msl || binary->msl_size == 0)
+                    {
+                        GEN_LOG_ERROR("[Render] shader '%s' has no MSL variant (spirv-cross missing at build time)",
+                                      shader_name);
+                        return false;
+                    }
+                    out.code_type = RHI::ShaderCodeType::MslSource;
+                    out.code = binary->msl;
+                    out.code_size = binary->msl_size;
+                    out.entry = "main0";
                 }
                 else
                 {
@@ -87,8 +116,35 @@ namespace Genesis
                 return layout;
             }
 
+            inline RHI::VertexLayout batchVertexLayout()
+            {
+                RHI::VertexLayout layout;
+                layout.stride = sizeof(BatchVertex);
+                layout.attributes = {
+                    {0, RHI::VertexFormat::Float3, offsetof(BatchVertex, position)},
+                    {1, RHI::VertexFormat::Float2, offsetof(BatchVertex, uv)},
+                    {2, RHI::VertexFormat::Float4, offsetof(BatchVertex, color)},
+                    {3, RHI::VertexFormat::Float4, offsetof(BatchVertex, params)},
+                    {4, RHI::VertexFormat::Float4, offsetof(BatchVertex, outline)},
+                };
+                return layout;
+            }
+
+            // Matches ImDrawVert: vec2 pos, vec2 uv, RGBA8 colour.
+            inline RHI::VertexLayout imguiVertexLayout()
+            {
+                RHI::VertexLayout layout;
+                layout.stride = 20;
+                layout.attributes = {
+                    {0, RHI::VertexFormat::Float2, 0},
+                    {1, RHI::VertexFormat::Float2, 8},
+                    {2, RHI::VertexFormat::UByte4Norm, 16},
+                };
+                return layout;
+            }
+
             // Fullscreen quad: two triangles.  uv (0,0) is paired with NDC
-            // (-1,-1), which is row 0 of the render target on BOTH backends.
+            // (-1,-1), which is row 0 of the render target on every backend.
             struct QuadVertex
             {
                 float pos[2];

@@ -6,9 +6,9 @@
  *                 [--backend gl|vulkan] [--all-backends] [--no-window]
  *
  * CPU-only groups (math, ecs, procedural, gltf, fbx, image, shaders, script,
- * render_ubo) always run.  GPU groups run once per available backend; with
- * --all-backends the suite additionally compares the OpenGL and Vulkan renders
- * of the same scene pixel by pixel.
+ * render_ubo) always run.  GPU groups run once per available backend
+ * (OpenGL, Vulkan, Metal); with --all-backends (default) the suite also
+ * compares the renders of the same scene on every pair of backends.
  */
 #include "test_framework.hpp"
 
@@ -139,51 +139,59 @@ namespace
         return out;
     }
 
-    bool compareBackends()
+    // Renders the reference scene on every available backend and compares
+    // each pair pixel by pixel: the strongest guarantee that OpenGL, Vulkan
+    // and Metal really implement the same renderer.
+    bool compareBackends(const std::vector<RHI::BackendType> &backends)
     {
-        GEN_LOG_INFO("=== cross backend comparison (OpenGL vs Vulkan) ===");
-        Capture gl = renderReferenceScene(RHI::BackendType::OpenGL);
-        Capture vk = renderReferenceScene(RHI::BackendType::Vulkan);
-        if (!gl.ok)
+        GEN_LOG_INFO("=== cross backend comparison (%zu backends) ===", backends.size());
+        std::vector<Capture> captures;
+        for (RHI::BackendType b : backends)
         {
-            GEN_LOG_ERROR("[cross-backend] OpenGL capture failed");
-            return false;
+            captures.push_back(renderReferenceScene(b));
+            if (!captures.back().ok)
+            {
+                GEN_LOG_ERROR("[cross-backend] %s capture failed", RHI::backendTypeName(b));
+                return false;
+            }
+            std::string path = std::string("/tmp/genesis_cross_backend_") + RHI::backendTypeName(b) + ".png";
+            ResourceIO::writeImagePNG(path, captures.back().width, captures.back().height, captures.back().rgba.data());
         }
-        if (!vk.ok)
+        bool all_ok = true;
+        for (size_t i = 0; i < captures.size(); ++i)
         {
-            GEN_LOG_ERROR("[cross-backend] Vulkan capture failed");
-            return false;
+            for (size_t j = i + 1; j < captures.size(); ++j)
+            {
+                const Capture &a = captures[i], &b = captures[j];
+                if (a.width != b.width || a.height != b.height)
+                {
+                    GEN_LOG_ERROR("[cross-backend] size mismatch %ux%u vs %ux%u", a.width, a.height, b.width, b.height);
+                    all_ok = false;
+                    continue;
+                }
+                double sum = 0.0, worst = 0.0;
+                size_t differing = 0;
+                for (size_t k = 0; k < a.rgba.size(); ++k)
+                {
+                    double d = std::fabs((double)a.rgba[k] - (double)b.rgba[k]);
+                    sum += d;
+                    worst = std::max(worst, d);
+                    if (d > 4.0) ++differing;
+                }
+                const double mean = sum / (double)a.rgba.size();
+                const double ratio = (double)differing / (double)a.rgba.size();
+                // Rasterisers round differently, so allow a small tolerance; a
+                // structural mismatch (orientation, culling, missing geometry,
+                // wrong lighting) is orders of magnitude larger.
+                const bool ok = (mean < 3.0) && (ratio < 0.05);
+                GEN_LOG_INFO("[cross-backend] %s vs %s: mean diff %.3f/255, worst %.0f, >4 off %.2f%% -> %s",
+                             RHI::backendTypeName(backends[i]), RHI::backendTypeName(backends[j]), mean, worst, ratio * 100.0,
+                             ok ? "MATCH" : "MISMATCH");
+                all_ok = all_ok && ok;
+            }
         }
-        if (gl.width != vk.width || gl.height != vk.height)
-        {
-            GEN_LOG_ERROR("[cross-backend] size mismatch %ux%u vs %ux%u", gl.width, gl.height, vk.width, vk.height);
-            return false;
-        }
-
-        double sum = 0.0, worst = 0.0;
-        size_t differing = 0;
-        for (size_t i = 0; i < gl.rgba.size(); ++i)
-        {
-            double d = std::fabs((double)gl.rgba[i] - (double)vk.rgba[i]);
-            sum += d;
-            worst = std::max(worst, d);
-            if (d > 4.0) ++differing;
-        }
-        double mean = sum / (double)gl.rgba.size();
-        double ratio = (double)differing / (double)gl.rgba.size();
-        GEN_LOG_INFO("[cross-backend] mean channel diff = %.3f/255, worst = %.0f, pixels off by >4 = %.2f%%",
-                     mean, worst, ratio * 100.0);
-
-        ResourceIO::writeImagePNG("/tmp/genesis_cross_backend_gl.png", gl.width, gl.height, gl.rgba.data());
-        ResourceIO::writeImagePNG("/tmp/genesis_cross_backend_vk.png", vk.width, vk.height, vk.rgba.data());
-
-        // Different drivers/rasterisers round differently, so allow a small
-        // tolerance; a structural mismatch (wrong orientation, missing
-        // geometry) would be orders of magnitude larger.
-        bool ok = (mean < 6.0) && (ratio < 0.25);
-        GEN_LOG_INFO("[cross-backend] %s (images written to /tmp/genesis_cross_backend_{gl,vk}.png)",
-                     ok ? "MATCH" : "MISMATCH");
-        return ok;
+        GEN_LOG_INFO("[cross-backend] %s (images in /tmp/genesis_cross_backend_<backend>.png)", all_ok ? "MATCH" : "MISMATCH");
+        return all_ok;
     }
 } // namespace
 
@@ -217,7 +225,7 @@ int main(int argc, char **argv)
         else if (a == "--filter" && i + 1 < argc) filter = argv[++i];
         else if (a == "--help" || a == "-h")
         {
-            std::printf("usage: genesis_tests [--verbose] [--no-gpu] [--backend gl|vulkan]\n"
+            std::printf("usage: genesis_tests [--verbose] [--no-gpu] [--backend gl|vulkan|metal]\n"
                         "                     [--all-backends|--single-backend] [--filter SUBSTR]\n");
             return 0;
         }
@@ -229,8 +237,8 @@ int main(int argc, char **argv)
 
     std::printf("Genesis Render test suite (%s)\n", GENESIS_ENGINE_VERSION);
     std::printf("  shaders baked : %zu\n", Shaders::shaderCount());
-    std::printf("  backends built: OpenGL=%d Vulkan=%d\n", (int)RHI::backendAvailable(RHI::BackendType::OpenGL),
-                (int)RHI::backendAvailable(RHI::BackendType::Vulkan));
+    std::printf("  backends built: OpenGL=%d Vulkan=%d Metal=%d\n", (int)RHI::backendAvailable(RHI::BackendType::OpenGL),
+                (int)RHI::backendAvailable(RHI::BackendType::Vulkan), (int)RHI::backendAvailable(RHI::BackendType::Metal));
     std::printf("----------------------------------------------------------\n");
 
     std::vector<RHI::BackendType> backends;
@@ -239,8 +247,8 @@ int main(int argc, char **argv)
         if (force_backend) backends.push_back(forced_backend);
         else if (all_backends)
         {
-            if (RHI::backendAvailable(RHI::BackendType::OpenGL)) backends.push_back(RHI::BackendType::OpenGL);
-            if (RHI::backendAvailable(RHI::BackendType::Vulkan)) backends.push_back(RHI::BackendType::Vulkan);
+            for (RHI::BackendType b : {RHI::BackendType::OpenGL, RHI::BackendType::Vulkan, RHI::BackendType::Metal})
+                if (RHI::backendAvailable(b)) backends.push_back(b);
         }
         else
         {
@@ -293,8 +301,8 @@ int main(int argc, char **argv)
     for (RHI::BackendType backend : backends) runGroup(true, backend);
 
     bool cross_ok = true;
-    if (run_gpu && all_backends && backends.size() == 2 && filter.empty())
-        cross_ok = compareBackends();
+    if (run_gpu && all_backends && backends.size() >= 2 && filter.empty())
+        cross_ok = compareBackends(backends);
 
     int failures = GenesisTest::Registry::instance().failures();
     int checks = GenesisTest::Registry::instance().checks();

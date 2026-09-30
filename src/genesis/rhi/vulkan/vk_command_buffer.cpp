@@ -115,11 +115,29 @@ namespace Genesis
             VkRenderPassRHI *rp = static_cast<VkRenderPassRHI *>(pass);
             VkFramebufferRHI *fbk = static_cast<VkFramebufferRHI *>(fb);
             if (!rp || !fbk) return;
+            const RenderPassDesc &rpd = rp->desc_;
+
+            // A pass that loads its attachments declares the layout it expects
+            // them in; bring each tracked image there first so passes can be
+            // chained freely (render -> sample -> render with LoadOp::Load).
+            for (uint32_t i = 0; i < rpd.attachment_count && i < fbk->attachment_textures.size(); ++i)
+            {
+                VkTextureRHI *tex = fbk->attachment_textures[i];
+                const TextureLayout wanted = rpd.attachments[i].initial_layout;
+                if (!tex || wanted == TextureLayout::Undefined || tex->currentLayout() == wanted) continue;
+                TextureBarrier b{};
+                b.texture = tex;
+                b.old_layout = tex->currentLayout();
+                b.new_layout = wanted;
+                pipelineBarrier(&b, 1);
+            }
+
             current_pass = rp->render_pass;
+            current_pass_obj = rp;
+            current_fb = fbk;
             inside_pass = true;
 
             std::vector<VkClearValue> clears;
-            const RenderPassDesc &rpd = rp->desc_;
             for (uint32_t i = 0; i < rpd.attachment_count; ++i)
             {
                 const AttachmentDesc &ad = rpd.attachments[i];
@@ -158,6 +176,15 @@ namespace Genesis
             vkCmdEndRenderPass(cmd);
             inside_pass = false;
             current_pass = VK_NULL_HANDLE;
+            if (current_pass_obj && current_fb)
+            {
+                const RenderPassDesc &rpd = current_pass_obj->desc_;
+                for (uint32_t i = 0; i < rpd.attachment_count && i < current_fb->attachment_textures.size(); ++i)
+                    if (VkTextureRHI *tex = current_fb->attachment_textures[i])
+                        tex->setCurrentLayout(rpd.attachments[i].final_layout);
+            }
+            current_pass_obj = nullptr;
+            current_fb = nullptr;
         }
 
         void VkCommandBufferRHI::bindPipeline(RHIPipeline *pipeline)
@@ -342,6 +369,30 @@ namespace Genesis
             int32_t w = (int32_t)t->width();
             int32_t h = (int32_t)t->height();
             uint32_t layers = t->layerCount();
+
+            // Level 0 holds the source image (whatever layout it is in); the
+            // remaining levels are about to be overwritten, so their previous
+            // contents can be discarded.
+            if (t->currentLayout() != TextureLayout::TransferDstOptimal)
+            {
+                TextureBarrier b0{};
+                b0.texture = t;
+                b0.old_layout = t->currentLayout();
+                b0.new_layout = TextureLayout::TransferDstOptimal;
+                b0.base_mip = 0;
+                b0.mip_count = 1;
+                pipelineBarrier(&b0, 1);
+            }
+            if (t->mipLevels() > 1)
+            {
+                TextureBarrier rest{};
+                rest.texture = t;
+                rest.old_layout = TextureLayout::Undefined;
+                rest.new_layout = TextureLayout::TransferDstOptimal;
+                rest.base_mip = 1;
+                rest.mip_count = t->mipLevels() - 1;
+                pipelineBarrier(&rest, 1);
+            }
 
             for (uint32_t layer = 0; layer < layers; ++layer)
             {

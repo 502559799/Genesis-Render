@@ -169,7 +169,7 @@ namespace Genesis
         GLPipeline::~GLPipeline()
         {
             for (auto &kv : vao_cache_)
-                glDeleteVertexArrays(1, &kv.second);
+                glDeleteVertexArrays(1, &kv.second.vao);
             vao_cache_.clear();
             if (!push_constant_ubos_.empty())
                 glDeleteBuffers((GLsizei)push_constant_ubos_.size(), push_constant_ubos_.data());
@@ -186,9 +186,9 @@ namespace Genesis
                 GLuint idx = glGetUniformBlockIndex(program_, b.name.c_str());
                 if (idx == GL_INVALID_INDEX)
                 {
-                    // Block optimised out or name mismatch - not fatal, but
-                    // almost always a shader/C++ mismatch worth reporting.
-                    GEN_LOG_WARN("[GL] pipeline '%s': uniform block '%s' (set=%u binding=%u) not found in shader",
+                    // Layouts are shared between pipelines, so a stage set may
+                    // legitimately not reference every block.
+                    GEN_LOG_DEBUG("[GL] pipeline '%s': uniform block '%s' (set=%u binding=%u) unused by the shader",
                                  desc_.name.c_str(), b.name.c_str(), b.set, b.binding);
                     continue;
                 }
@@ -208,7 +208,7 @@ namespace Genesis
                 GLint loc = glGetUniformLocation(program_, b.name.c_str());
                 if (loc < 0)
                 {
-                    GEN_LOG_WARN("[GL] pipeline '%s': sampler uniform '%s' (set=%u binding=%u) not found in shader",
+                    GEN_LOG_DEBUG("[GL] pipeline '%s': sampler uniform '%s' (set=%u binding=%u) unused by the shader",
                                  desc_.name.c_str(), b.name.c_str(), b.set, b.binding);
                     continue;
                 }
@@ -248,14 +248,7 @@ namespace Genesis
             GLuint vb_id = vb ? vb->id() : 0;
             GLuint ib_id = ib ? ib->id() : 0;
             auto key = std::make_pair(vb_id, ib_id);
-            auto it = vao_cache_.find(key);
-            if (it != vao_cache_.end()) return it->second;
-
-            GLuint vao = 0;
-            glGenVertexArrays(1, &vao);
-            glBindVertexArray(vao);
-
-            if (vb && layout.valid())
+            auto pointAttributes = [&](uint64_t offset)
             {
                 glBindBuffer(GL_ARRAY_BUFFER, vb_id);
                 for (const auto &attr : layout.attributes)
@@ -266,15 +259,36 @@ namespace Genesis
                                           glVertexFormatGL(attr.format),
                                           glVertexNormalized(attr.format),
                                           (GLsizei)layout.stride,
-                                          reinterpret_cast<const void *>(static_cast<uintptr_t>(attr.offset + vb_offset)));
+                                          reinterpret_cast<const void *>(static_cast<uintptr_t>(attr.offset + offset)));
                     if (layout.per_instance) glVertexAttribDivisor(attr.location, 1);
                 }
+            };
+
+            auto it = vao_cache_.find(key);
+            if (it != vao_cache_.end())
+            {
+                // Transient vertex data is sub-allocated from a ring, so the
+                // same buffer comes back at different offsets.
+                if (vb && layout.valid() && it->second.vb_offset != vb_offset)
+                {
+                    glBindVertexArray(it->second.vao);
+                    pointAttributes(vb_offset);
+                    glBindVertexArray(0);
+                    glBindBuffer(GL_ARRAY_BUFFER, 0);
+                    it->second.vb_offset = vb_offset;
+                }
+                return it->second.vao;
             }
+
+            GLuint vao = 0;
+            glGenVertexArrays(1, &vao);
+            glBindVertexArray(vao);
+            if (vb && layout.valid()) pointAttributes(vb_offset);
             if (ib) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ib_id);
 
             glBindVertexArray(0);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
-            vao_cache_[key] = vao;
+            vao_cache_[key] = CachedVAO{vao, vb_offset};
             return vao;
         }
 
@@ -402,6 +416,10 @@ namespace Genesis
             info_.supports_tessellation = true;
             info_.supports_multisample = true;
             info_.supports_srgb_framebuffer = true;
+            info_.clip_depth_zero_to_one = false;
+            info_.present_row0_top = false;
+            info_.depth_format = PixelFormat::D24_UNORM_S8_UINT;
+            info_.frames_in_flight = 1;
 
             GEN_LOG_INFO("[GL] context: %s | %s", info_.api_version.c_str(), info_.device_name.c_str());
 
@@ -473,19 +491,16 @@ namespace Genesis
             swapchain_height_ = height;
             swapchain_format_ = desc_.srgb_backbuffer ? PixelFormat::RGBA8_SRGB : PixelFormat::RGBA8_UNORM;
 
+            // The present pass is colour only on every backend (tone mapping,
+            // 2D overlays and UI never depth test).
             RenderPassDesc rp;
             rp.name = "swapchain";
-            rp.attachment_count = 2;
+            rp.attachment_count = 1;
             rp.attachments[0].format = swapchain_format_;
             rp.attachments[0].load_op = LoadOp::Clear;
             rp.attachments[0].store_op = StoreOp::Store;
             rp.attachments[0].is_depth_stencil = false;
             rp.attachments[0].final_layout = TextureLayout::PresentSrc;
-            rp.attachments[1].format = PixelFormat::D24_UNORM_S8_UINT;
-            rp.attachments[1].load_op = LoadOp::Clear;
-            rp.attachments[1].store_op = StoreOp::DontCare;
-            rp.attachments[1].is_depth_stencil = true;
-            rp.attachments[1].final_layout = TextureLayout::DepthStencilAttachmentOptimal;
 
             swapchain_render_pass_ = static_cast<GLRenderPass *>(createRenderPass(rp));
             swapchain_framebuffer_ = new GLFramebuffer(0, swapchain_render_pass_, width, height, "swapchain-default", true);
@@ -520,6 +535,7 @@ namespace Genesis
             if (width == 0 || height == 0) return;
             swapchain_width_ = width;
             swapchain_height_ = height;
+            if (swapchain_framebuffer_) swapchain_framebuffer_->resize(width, height);
         }
 
         bool GLDevice::beginFrame()
@@ -962,15 +978,6 @@ namespace Genesis
                 glBufferData(b->target(), (GLsizeiptr)(offset + size), nullptr, glUsageHint(b->memoryUsage()));
             }
             glBufferSubData(b->target(), (GLintptr)offset, (GLsizeiptr)size, data);
-            if (std::getenv("GENESIS_DBG_DRAW") && b->target() == GL_UNIFORM_BUFFER)
-            {
-                GLfloat check[4] = {0, 0, 0, 0};
-                glGetBufferSubData(b->target(), (GLintptr)(offset + 128), sizeof(check), check);
-                GLenum e = glGetError();
-                GEN_LOG_INFO("[GLDBG] writeBuffer('%s') id=%u size=%llu off=%llu -> readback128=(%.3f %.3f %.3f %.3f) err=0x%x",
-                             b->name().c_str(), b->id(), (unsigned long long)b->size(), (unsigned long long)offset,
-                             check[0], check[1], check[2], check[3], e);
-            }
             glBindBuffer(b->target(), 0);
         }
 

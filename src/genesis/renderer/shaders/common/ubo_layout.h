@@ -26,8 +26,7 @@ GS_UBO(0, 0, PerFrame)
     vec4 u_camera_position;  // xyz = world space eye, w = vertical fov (radians)
     vec4 u_frame_params;     // x = time (s), y = delta time (s), z = frame index, w = exposure
     vec4 u_viewport_params;  // x = width, y = height, z = 1/width, w = 1/height
-    vec4 u_backend_params;   // x = flip uv.y (GL offscreen targets), y = depth [0,1] (1) or [-1,1] (0),
-                             // z = flip clip y (Vulkan), w = unused
+    vec4 u_backend_params;   // x = unused, y = depth [0,1] (1) or [-1,1] (0), zw = unused
 };
 
 //----------------------------------------------------------------------
@@ -68,9 +67,11 @@ GS_UBO(1, 0, Material)
     vec4 u_base_color_factor;   // rgba, linear (already converted on the CPU)
     vec4 u_emissive_factor;     // rgb linear, a = emissive strength
     vec4 u_material_params0;    // x = metallic, y = roughness, z = normal scale, w = occlusion strength
-    vec4 u_material_params1;    // x = alpha cutoff, y = alpha mode, z = double sided, w = unused
+    vec4 u_material_params1;    // x = alpha cutoff, y = alpha mode, z = double sided,
+                                // w = shading model (0 Cook-Torrance, 1 Blinn-Phong, 2 unlit)
     vec4 u_texture_mask;        // x = base colour, y = metallic-roughness, z = normal, w = occlusion (0/1)
-    vec4 u_material_extra;      // x = emissive texture (0/1), y = uv scale x, z = uv scale y, w = unused
+    vec4 u_material_extra;      // x = emissive texture (0/1), yzw = unused
+    vec4 u_uv_transform;        // xy = uv scale, zw = uv offset
 };
 
 //----------------------------------------------------------------------
@@ -80,7 +81,7 @@ GS_UBO(2, 0, PerDraw)
 {
     mat4 u_model;
     mat4 u_normal_matrix;   // transpose(inverse(model)) upper 3x3
-    vec4 u_object_params;   // x = pick id, y = wireframe (0/1), z = uv offset x, w = uv offset y
+    vec4 u_object_params;   // x = pick id, y = wireframe (0/1), zw = unused
 };
 
 #endif // GENESIS_UBO_LAYOUT_H

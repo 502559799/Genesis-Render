@@ -453,46 +453,7 @@ namespace
                 engine.render().scene().setMaterialPBR(editable_material_index, material_metallic, material_roughness);
             }
 
-            // ---- CommandBuffer: free draws + SDF text (organise step) ----
-            if (overlay_demo)
-            {
-                auto &ov = engine.render().overlay();
-                ov.clearCommands();
-                ov.postEffect((Render::PostEffect)(uint32_t)post_effect);
-
-                // 2D free draws (screen space): a translucent HUD strip.
-                float sw = (float)engine.render().settings().hdr_width;
-                float sh = (float)engine.render().settings().hdr_height;
-                ov.fill2D(8.0f, sh - 40.0f, 250.0f, 22.0f, 0.05f, 0.06f, 0.09f, 0.6f);
-                ov.line2D(12.0f, sh - 40.0f, 240.0f, sh - 18.0f + std::sin(elapsed * 2.0f) * 6.0f,
-                          0.2f, 0.8f, 1.0f, 0.9f);
-
-                // 3D free draw: a small floating quad in world space.
-                ov.quad3D(-1.4f, 2.2f, 0.0f, 0.4f, 0.02f, 0.9f, 0.4f, 0.1f, 0.9f);
-
-                // SDF 2D text (HUD, after tone mapping).
-                ov.text().drawText2D(20.0f, 20.0f, 26.0f, "Genesis Render",
-                    Math::Color(0.1f, 0.1f, 0.1f, 1.0f), sw, sh);
-                ov.text().drawText2D(20.0f, 52.0f, 16.0f,
-                    std::string("backend: ") + RHI::backendTypeName(engine.device()->backend()) +
-                    "   SDF text / CommandBuffer / programmable post",
-                    Math::Color(0.3f, 0.5f, 0.8f, 1.0f), sw, sh);
-
-                // SDF 3D text label above the editable sphere.
-                if (show_3d_text)
-                {
-                    Math::Mat4 label = Math::Mat4::identity();
-                    label.m[3] = 0.0f; label.m[7] = 1.65f; label.m[11] = 0.0f;
-                    ov.text().drawText3D(label, "LIVE MATERIAL", Math::Color(1.0f, 0.85f, 0.2f, 1.0f), 0.18f);
-                    label.m[3] = -1.4f; label.m[7] = 2.45f; label.m[11] = 0.0f;
-                    ov.text().drawText3D(label, "3D SDF TEXT", Math::Color(0.4f, 1.0f, 0.7f, 1.0f), 0.15f);
-                }
-            }
-            else
-            {
-                engine.render().overlay().clearCommands();
-                engine.render().overlay().postEffect(Render::PostEffect::None);
-            }
+            engine.render().settings().post_effect = (Render::PostEffect)(uint32_t)post_effect;
         }
 
         //--------------------------------------------------------------

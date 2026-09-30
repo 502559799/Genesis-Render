@@ -1,22 +1,21 @@
 /*
- * Genesis Render - real time UI (Dear ImGui on top of the RHI)
+ * Genesis Render - real time UI (Dear ImGui rendered through the RHI)
  *
- * The UI is drawn inside the *present* render pass, right after tone mapping,
- * through RenderSystem::setPostPresentCallback().  That keeps a single pass
- * instance per frame on both backends (Vulkan would otherwise need a second
- * render pass with LoadOp::Load plus duplicate framebuffers).
+ * ImGui's draw data is rendered by the engine itself (shaders/ui/imgui.*)
+ * using only RHI objects, so the UI works identically on OpenGL, Vulkan and
+ * Metal and needs no backend specific integration code.  The UI is drawn at
+ * the very end of the frame into the presented image; the target's
+ * orientation (TargetRef::row0_top) and the HiDPI framebuffer scale are
+ * honoured, so screenshots / captures contain the UI upright as well.
  *
- * Backend integration:
- *   OpenGL : imgui_impl_opengl3 (bundled mini loader, GLSL "#version 410")
- *   Vulkan : imgui_impl_vulkan  (uses the RHI's native instance/device/queue
- *            and the swapchain render pass; this is the single place in the
- *            engine where native handles cross the RHI boundary, and it is
- *            confined to third-party integration code)
+ * Textures: an ImTextureID is an RHI::RHITexture*.  Use UI::image() to show
+ * a RenderTexture (it flips v because rendered images are stored bottom-up).
  */
 #ifndef __GENESIS_UI_SYSTEM_HPP__
 #define __GENESIS_UI_SYSTEM_HPP__
 
 #include "platform_layer/input_system.hpp"
+#include "renderer/render_texture.hpp"
 #include "rhi/rhi.hpp"
 
 #include <SDL2/SDL.h>
@@ -27,6 +26,11 @@
 
 namespace Genesis
 {
+    namespace Render
+    {
+        class RenderSystem;
+    }
+
     namespace UI
     {
         enum class StylePreset : uint32_t
@@ -42,45 +46,44 @@ namespace Genesis
             UISystem() {}
             ~UISystem();
 
-            bool initialize(RHI::RHIDevice *device, SDL_Window *window);
+            bool initialize(RHI::RHIDevice *device, Render::RenderSystem *render, SDL_Window *window);
             void shutdown();
 
-            // Feed raw SDL events (called from the window event filter).
             void processEvent(const SDL_Event &event);
 
-            // Per frame -------------------------------------------------------
+            // Per frame
             void beginFrame(Platform::InputSystem *input, float delta_time);
             void endFrame(); // ImGui::Render()
 
-            // Draw the accumulated ImDrawData.  Must be called from inside the
-            // present render pass (see RenderSystem::setPostPresentCallback).
-            void renderInto(RHI::RHICommandBuffer *cmd, uint32_t width, uint32_t height);
+            // Draws the accumulated ImDrawData into `target` (inside an open
+            // render pass on that target).
+            void renderInto(RHI::RHICommandBuffer *cmd, const Render::TargetRef &target);
 
             bool isInitialized() const { return initialized_; }
             void setStyle(StylePreset preset);
             bool show_demo_window = false;
             bool ui_visible = true;
 
-            // Log ring buffer surfaced in the demo's log panel.
             void pushLog(const std::string &line);
             const std::vector<std::string> &logs() const { return logs_; }
             void clearLogs() { logs_.clear(); }
 
             RHI::RHIDevice *device() { return device_; }
+            uint32_t drawCallsLastFrame() const { return last_draw_calls_; }
 
         private:
-            bool createVulkanBackend(RHI::RHIDevice *device, SDL_Window *window);
-            bool createOpenGLBackend(SDL_Window *window);
-            void destroyNativeBackend();
-
             RHI::RHIDevice *device_ = nullptr;
+            Render::RenderSystem *render_ = nullptr;
             SDL_Window *window_ = nullptr;
+            RHI::RHITexture *font_texture_ = nullptr;
             bool initialized_ = false;
-            bool use_vulkan_ = false;
-            void *vk_descriptor_pool_ = nullptr; // VkDescriptorPool
             std::vector<std::string> logs_;
             float time_ = 0.0f;
+            uint32_t last_draw_calls_ = 0;
         };
+
+        // ImGui::Image for a render texture (upright).
+        void image(const Render::RenderTexturePtr &texture, float width, float height);
 
     } // namespace UI
 } // namespace Genesis

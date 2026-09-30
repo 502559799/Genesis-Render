@@ -685,7 +685,7 @@ TEST(image, png_and_tga_roundtrip)
 //======================================================================
 // Shader registry
 //======================================================================
-TEST(shaders, registry_has_both_variants)
+TEST(shaders, registry_has_all_three_variants)
 {
     size_t count = Shaders::shaderCount();
     CHECK_MSG(count >= 13, "at least 13 shaders baked into the binary");
@@ -695,15 +695,17 @@ TEST(shaders, registry_has_both_variants)
         "scene/pbr_mesh.vert",
         "scene/pbr_mesh.frag",
         "scene/skybox.frag",
-        "scene/unlit_mesh.vert",
-        "scene/unlit_mesh.frag",
         "scene/debug_line.vert",
         "scene/debug_line.frag",
         "ibl/equirect_to_cube.frag",
         "ibl/irradiance.frag",
         "ibl/prefilter.frag",
         "ibl/brdf_lut.frag",
-        "post/tonemap.frag",
+        "post/effects.frag",
+        "ui/batch.vert",
+        "ui/batch.frag",
+        "ui/imgui.vert",
+        "ui/imgui.frag",
     };
     for (const char *name : required)
     {
@@ -712,6 +714,8 @@ TEST(shaders, registry_has_both_variants)
         if (!b) continue;
         CHECK_MSG(b->glsl && b->glsl_size > 0, std::string("GLSL variant: ") + name);
         CHECK_MSG(b->spirv && b->spirv_words > 0, std::string("SPIR-V variant: ") + name);
+        CHECK_MSG(b->msl && b->msl_size > 0 && std::strstr(b->msl, "main0") != nullptr,
+                  std::string("MSL variant (entry main0): ") + name);
         if (b->spirv && b->spirv_words > 0)
         {
             // SPIR-V magic number 0x07230203
@@ -858,10 +862,11 @@ TEST(render_ubo, struct_sizes_match_glsl)
     CHECK_EQ(sizeof(Render::PerFrameUBO), (size_t)384);
     CHECK_EQ(sizeof(Render::LightsUBO), (size_t)544);
     CHECK_EQ(sizeof(Render::EnvironmentUBO), (size_t)64);
-    CHECK_EQ(sizeof(Render::MaterialUBO), (size_t)96);
+    CHECK_EQ(sizeof(Render::MaterialUBO), (size_t)112);
     CHECK_EQ(sizeof(Render::PerDrawUBO), (size_t)144);
     CHECK_EQ(sizeof(Render::IblParamsUBO), (size_t)32);
-    CHECK_EQ(sizeof(Render::PostParamsUBO), (size_t)32);
+    CHECK_EQ(sizeof(Render::PostParamsUBO), (size_t)80);
+    CHECK_EQ(sizeof(Render::BatchParamsUBO), (size_t)80);
     CHECK_EQ(sizeof(Render::GpuLight), (size_t)64);
     CHECK_EQ(Render::kMaxLights, 8u);
 }

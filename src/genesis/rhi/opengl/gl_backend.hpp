@@ -199,7 +199,12 @@ namespace Genesis
             std::vector<SamplerUniform> sampler_uniforms_;
             std::vector<GLuint> push_constant_ubos_;
             uint32_t push_constant_slot_ = 0;
-            std::map<std::pair<GLuint, GLuint>, GLuint> vao_cache_; // (vb,ib) -> vao
+            struct CachedVAO
+            {
+                GLuint vao = 0;
+                uint64_t vb_offset = 0; // offset the attribute pointers currently use
+            };
+            std::map<std::pair<GLuint, GLuint>, CachedVAO> vao_cache_; // (vb,ib) -> vao
             static const uint32_t kPushConstantSlots = 3;
         };
 
@@ -237,6 +242,7 @@ namespace Genesis
             bool isDefault() const { return is_default_; }
             const std::vector<GLuint> &colorAttachments() const { return color_attachments_; }
             void addColorAttachment(GLuint tex) { color_attachments_.push_back(tex); }
+            void resize(uint32_t width, uint32_t height) { width_ = width; height_ = height; }
 
         private:
             GLuint fbo_ = 0;

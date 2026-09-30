@@ -1,11 +1,19 @@
 /*
  * Genesis Render - GLSL dialect header
  *
- * One GLSL source is authored for both backends.  scripts/build_shaders.py
- * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL
- * before inlining this header.
+ * One GLSL source is authored for all three backends.  scripts/build_shaders.py
+ * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_MSL /
+ * GENESIS_GLSL before inlining this header.
  *
  *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.
+ *   Metal  : GLSL 450 compiled to SPIR-V, then translated to MSL by
+ *            SPIRV-Cross (--msl-decoration-binding).  Every descriptor is
+ *            flattened into set 0 with binding = set * 8 + binding, which
+ *            becomes the Metal [[buffer(n)]] / [[texture(n)]] / [[sampler(n)]]
+ *            slot.  Push constants become a uniform block at buffer 24 and
+ *            vertex streams live at buffer 30 (see metal_backend.mm).
+ *            Samplers must therefore only be declared in sets 0 and 1
+ *            (Metal exposes 16 sampler slots per stage).
  *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI
  *            backend binds uniform blocks by NAME to the deterministic index
  *            glUniformBlockIndex(set, binding) and assigns sampler units with
@@ -39,7 +47,16 @@
 // NOTE: macro parameter names must NOT collide with GLSL layout qualifier
 // keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces
 // the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.
-#ifdef GENESIS_VK
+#if defined(GENESIS_MSL)
+#define GS_MSL_SLOT(gs_set, gs_binding) ((gs_set) * 8 + (gs_binding))
+#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std140) uniform gs_block
+#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2D gs_name
+#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name
+#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name
+#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block
+#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name
+#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name
+#elif defined(GENESIS_VK)
 #define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block
 #define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name
 #define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name

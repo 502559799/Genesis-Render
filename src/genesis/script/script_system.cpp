@@ -716,51 +716,64 @@ namespace Genesis
             //------------------------------------------------------------------
             // Command buffer: free 2D/3D draw commands (organise -> submit)
             //------------------------------------------------------------------
+            // These legacy helpers record into the renderer's per-frame
+            // immediate command buffers (cleared after every frame):
+            //   2D -> CameraEvent::Overlay, 3D -> CameraEvent::AfterTransparent.
+            Math::Color optColor(lua_State *L, int first, float a_default = 1.0f)
+            {
+                return Math::Color((float)luaL_optnumber(L, first, 1), (float)luaL_optnumber(L, first + 1, 1),
+                                   (float)luaL_optnumber(L, first + 2, 1), (float)luaL_optnumber(L, first + 3, a_default));
+            }
+
             int lua_cmd_clear(lua_State *L)
             {
                 LuaContext *ctx = context(L);
-                if (ctx && ctx->render) ctx->render->overlay().clearCommands();
+                if (ctx && ctx->render)
+                {
+                    ctx->render->immediate(Render::CameraEvent::Overlay).clear();
+                    ctx->render->immediate(Render::CameraEvent::AfterTransparent).clear();
+                }
                 return 0;
             }
             int lua_cmd_fill2d(lua_State *L)
             {
                 LuaContext *ctx = context(L);
                 if (ctx && ctx->render)
-                    ctx->render->overlay().fill2D(
-                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
-                        (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4),
-                        (float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
-                        (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1));
+                    ctx->render->immediate(Render::CameraEvent::Overlay)
+                        .drawRect((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3),
+                                  (float)luaL_checknumber(L, 4), optColor(L, 5));
                 return 0;
             }
             int lua_cmd_line2d(lua_State *L)
             {
                 LuaContext *ctx = context(L);
                 if (ctx && ctx->render)
-                    ctx->render->overlay().line2D(
-                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
-                        (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4),
-                        (float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
-                        (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1));
+                    ctx->render->immediate(Render::CameraEvent::Overlay)
+                        .drawLine2D(Math::Vec2((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2)),
+                                    Math::Vec2((float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4)), optColor(L, 5),
+                                    2.0f);
                 return 0;
             }
             int lua_cmd_quad3d(lua_State *L)
             {
                 LuaContext *ctx = context(L);
                 if (ctx && ctx->render)
-                    ctx->render->overlay().quad3D(
-                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
-                        (float)luaL_checknumber(L, 3), (float)luaL_optnumber(L, 4, 0.2f),
-                        (float)luaL_optnumber(L, 5, 0.2f),
-                        (float)luaL_optnumber(L, 6, 1), (float)luaL_optnumber(L, 7, 1),
-                        (float)luaL_optnumber(L, 8, 1), (float)luaL_optnumber(L, 9, 1));
+                    ctx->render->immediate(Render::CameraEvent::AfterTransparent)
+                        .drawQuad3D(Math::Vec3((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                                               (float)luaL_checknumber(L, 3)),
+                                    Math::Vec2((float)luaL_optnumber(L, 4, 0.2f), (float)luaL_optnumber(L, 5, 0.2f)),
+                                    optColor(L, 6), true);
                 return 0;
             }
             int lua_post_effect(lua_State *L)
             {
                 LuaContext *ctx = context(L);
                 if (ctx && ctx->render)
-                    ctx->render->overlay().postEffect((Render::PostEffect)(uint32_t)luaL_optinteger(L, 1, 0));
+                {
+                    lua_Integer e = luaL_optinteger(L, 1, 0);
+                    if (e < 0 || e >= (lua_Integer)Render::PostEffect::Count) e = 0;
+                    ctx->render->settings().post_effect = (Render::PostEffect)(uint32_t)e;
+                }
                 return 0;
             }
 
@@ -772,12 +785,9 @@ namespace Genesis
                 LuaContext *ctx = context(L);
                 if (!ctx || !ctx->render) return 0;
                 const char *str = luaL_checkstring(L, 4);
-                ctx->render->overlay().text().drawText2D(
-                    (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
-                    (float)luaL_optnumber(L, 3, 24), str,
-                    Math::Color((float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
-                                (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1)),
-                    (float)ctx->render->settings().hdr_width, (float)ctx->render->settings().hdr_height);
+                ctx->render->immediate(Render::CameraEvent::Overlay)
+                    .drawText(str, (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2), (float)luaL_optnumber(L, 3, 24),
+                              optColor(L, 5));
                 return 0;
             }
             int lua_text3d(lua_State *L)
@@ -785,14 +795,10 @@ namespace Genesis
                 LuaContext *ctx = context(L);
                 if (!ctx || !ctx->render) return 0;
                 const char *str = luaL_checkstring(L, 5);
-                Math::Mat4 w = Math::Mat4::identity();
-                w.m[3] = (float)luaL_checknumber(L, 1);
-                w.m[7] = (float)luaL_checknumber(L, 2);
-                w.m[11] = (float)luaL_checknumber(L, 3);
-                ctx->render->overlay().text().drawText3D(w, str,
-                    Math::Color((float)luaL_optnumber(L, 6, 1), (float)luaL_optnumber(L, 7, 1),
-                                (float)luaL_optnumber(L, 8, 1), (float)luaL_optnumber(L, 9, 1)),
-                    (float)luaL_optnumber(L, 4, 0.2f));
+                ctx->render->immediate(Render::CameraEvent::AfterTransparent)
+                    .drawText3D(str, Math::Vec3((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                                                (float)luaL_checknumber(L, 3)),
+                                (float)luaL_optnumber(L, 4, 0.2f), optColor(L, 6));
                 return 0;
             }
 

@@ -1,19 +1,16 @@
 /*
- * Genesis Render - UI system implementation
+ * Genesis Render - UI system implementation (ImGui through the RHI)
  */
 #include "ui/ui_system.hpp"
 #include "foundation_layer/genesis_log.hpp"
+#include "renderer/render_internal.hpp"
+#include "renderer/render_system.hpp"
 
 #include "imgui.h"
 #include "imgui_impl_sdl.h"
 
-#if GENESIS_RHI_OPENGL
-#include "imgui_impl_opengl3.h"
-#endif
-#if GENESIS_RHI_VULKAN
-#include "imgui_impl_vulkan.h"
-#include "rhi/vulkan/vk_backend.hpp"
-#endif
+#include <algorithm>
+#include <cmath>
 
 namespace Genesis
 {
@@ -24,168 +21,81 @@ namespace Genesis
             shutdown();
         }
 
-        bool UISystem::initialize(RHI::RHIDevice *device, SDL_Window *window)
+        bool UISystem::initialize(RHI::RHIDevice *device, Render::RenderSystem *render, SDL_Window *window)
         {
-            if (!device || !window)
+            if (!device || !render || !window)
             {
-                GEN_LOG_ERROR("[UI] initialise requires a device and a window");
+                GEN_LOG_ERROR("[UI] initialise requires a device, the render system and a window");
                 return false;
             }
             device_ = device;
+            render_ = render;
             window_ = window;
-            use_vulkan_ = device->backend() == RHI::BackendType::Vulkan;
 
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
             ImGuiIO &io = ImGui::GetIO();
             io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-            io.IniFilename = nullptr; // no imgui.ini churn in the repository
+            io.IniFilename = nullptr;
             io.LogFilename = nullptr;
-
-            ImGui::StyleColorsDark();
+            io.BackendRendererName = "genesis_rhi";
+            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
             setStyle(StylePreset::Genesis);
 
-            // imgui 1.86 has no generic init; pick the one matching the backend.
-            bool sdl_ok = use_vulkan_ ? ImGui_ImplSDL2_InitForVulkan(window)
-                                      : ImGui_ImplSDL2_InitForOpenGL(window, (void *)SDL_GL_GetCurrentContext());
+            bool sdl_ok = false;
+            switch (device->backend())
+            {
+            case RHI::BackendType::Vulkan: sdl_ok = ImGui_ImplSDL2_InitForVulkan(window); break;
+            case RHI::BackendType::Metal: sdl_ok = ImGui_ImplSDL2_InitForMetal(window); break;
+            default: sdl_ok = ImGui_ImplSDL2_InitForOpenGL(window, SDL_GL_GetCurrentContext()); break;
+            }
             if (!sdl_ok)
             {
-                GEN_LOG_ERROR("[UI] ImGui_ImplSDL2_Init failed");
-                return false;
-            }
-
-            bool ok = use_vulkan_ ? createVulkanBackend(device, window) : createOpenGLBackend(window);
-            if (!ok)
-            {
-                GEN_LOG_ERROR("[UI] backend initialisation failed");
-                ImGui_ImplSDL2_Shutdown();
+                GEN_LOG_ERROR("[UI] ImGui_ImplSDL2 initialisation failed");
                 ImGui::DestroyContext();
                 return false;
             }
 
+            // Font atlas -> RGBA8 texture.
+            unsigned char *pixels = nullptr;
+            int w = 0, h = 0;
+            io.Fonts->GetTexDataAsRGBA32(&pixels, &w, &h);
+            RHI::TextureDesc td;
+            td.format = RHI::PixelFormat::RGBA8_UNORM;
+            td.width = (uint32_t)w;
+            td.height = (uint32_t)h;
+            td.mip_levels = 1;
+            td.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled | (uint32_t)RHI::TextureUsageFlagBits::TransferDst;
+            td.name = "imgui.font_atlas";
+            font_texture_ = device->createTexture(td);
+            if (!font_texture_)
+            {
+                GEN_LOG_ERROR("[UI] font atlas creation failed");
+                ImGui_ImplSDL2_Shutdown();
+                ImGui::DestroyContext();
+                return false;
+            }
+            device->writeTexture(font_texture_, pixels, (uint64_t)w * h * 4, (uint32_t)w, (uint32_t)h, 0, 0, 1);
+            io.Fonts->SetTexID((ImTextureID)font_texture_);
+
             initialized_ = true;
-            GEN_LOG_INFO("[UI] ImGui %s initialised (backend=%s)", IMGUI_VERSION,
+            GEN_LOG_INFO("[UI] ImGui %s initialised (RHI renderer, backend=%s)", IMGUI_VERSION,
                          RHI::backendTypeName(device->backend()));
             return true;
-        }
-
-        bool UISystem::createOpenGLBackend(SDL_Window *window)
-        {
-            (void)window;
-#if GENESIS_RHI_OPENGL
-            // GLSL 410 keeps the UI shaders inside the OpenGL 4.1 core profile
-            // that macOS provides.
-            if (!ImGui_ImplOpenGL3_Init("#version 410"))
-            {
-                GEN_LOG_ERROR("[UI] ImGui_ImplOpenGL3_Init failed");
-                return false;
-            }
-            return true;
-#else
-            GEN_LOG_ERROR("[UI] OpenGL backend is not compiled in");
-            return false;
-#endif
-        }
-
-        bool UISystem::createVulkanBackend(RHI::RHIDevice *device, SDL_Window *window)
-        {
-            (void)window;
-#if GENESIS_RHI_VULKAN
-            RHI::VkDeviceRHI *vk = static_cast<RHI::VkDeviceRHI *>(device);
-            if (!vk->device() || !vk->vkSwapchainRenderPass())
-            {
-                GEN_LOG_ERROR("[UI] Vulkan backend needs a valid device and swapchain render pass");
-                return false;
-            }
-
-            VkDescriptorPoolSize pool_sizes[] = {
-                {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
-                {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-                {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
-                {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
-                {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-                {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-                {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000},
-            };
-            VkDescriptorPoolCreateInfo pool_info{};
-            pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-            pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-            pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
-            pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
-            pool_info.pPoolSizes = pool_sizes;
-            if (vkCreateDescriptorPool(vk->device(), &pool_info, nullptr,
-                                       reinterpret_cast<VkDescriptorPool *>(&vk_descriptor_pool_)) != VK_SUCCESS)
-            {
-                GEN_LOG_ERROR("[UI] failed to create the ImGui descriptor pool");
-                return false;
-            }
-
-            ImGui_ImplVulkan_InitInfo init_info{};
-            init_info.Instance = vk->instance();
-            init_info.PhysicalDevice = vk->physicalDevice();
-            init_info.Device = vk->device();
-            init_info.QueueFamily = vk->graphicsQueueFamily();
-            init_info.Queue = vk->graphicsQueue();
-            init_info.PipelineCache = VK_NULL_HANDLE;
-            init_info.DescriptorPool = reinterpret_cast<VkDescriptorPool>(vk_descriptor_pool_);
-            init_info.Subpass = 0;
-            init_info.MinImageCount = 2;
-            init_info.ImageCount = std::max(2u, vk->swapchainImageCount());
-            init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-            init_info.Allocator = nullptr;
-            init_info.CheckVkResultFn = nullptr;
-
-            if (!ImGui_ImplVulkan_Init(&init_info, vk->vkSwapchainRenderPass()))
-            {
-                GEN_LOG_ERROR("[UI] ImGui_ImplVulkan_Init failed");
-                return false;
-            }
-
-            // Upload the font atlas through a one-time command buffer.
-            VkCommandBuffer cmd = vk->beginSingleTimeCommands();
-            ImGui_ImplVulkan_CreateFontsTexture(cmd);
-            vk->endSingleTimeCommands(cmd);
-            ImGui_ImplVulkan_DestroyFontUploadObjects();
-            return true;
-#else
-            (void)device;
-            GEN_LOG_ERROR("[UI] Vulkan backend is not compiled in");
-            return false;
-#endif
-        }
-
-        void UISystem::destroyNativeBackend()
-        {
-#if GENESIS_RHI_VULKAN
-            if (use_vulkan_)
-            {
-                ImGui_ImplVulkan_Shutdown();
-                if (vk_descriptor_pool_ && device_)
-                {
-                    RHI::VkDeviceRHI *vk = static_cast<RHI::VkDeviceRHI *>(device_);
-                    vkDestroyDescriptorPool(vk->device(), reinterpret_cast<VkDescriptorPool>(vk_descriptor_pool_), nullptr);
-                    vk_descriptor_pool_ = nullptr;
-                }
-                return;
-            }
-#endif
-#if GENESIS_RHI_OPENGL
-            ImGui_ImplOpenGL3_Shutdown();
-#endif
         }
 
         void UISystem::shutdown()
         {
             if (!initialized_) return;
-            destroyNativeBackend();
+            if (device_) device_->waitIdle();
+            if (render_ && font_texture_) render_->forgetTexture(font_texture_);
+            if (font_texture_) device_->destroyTexture(font_texture_);
+            font_texture_ = nullptr;
             ImGui_ImplSDL2_Shutdown();
             ImGui::DestroyContext();
             initialized_ = false;
             device_ = nullptr;
+            render_ = nullptr;
             window_ = nullptr;
         }
 
@@ -199,20 +109,12 @@ namespace Genesis
         {
             if (!initialized_) return;
             time_ += delta_time;
-
-#if GENESIS_RHI_VULKAN
-            if (use_vulkan_) ImGui_ImplVulkan_NewFrame();
-#endif
-#if GENESIS_RHI_OPENGL
-            if (!use_vulkan_) ImGui_ImplOpenGL3_NewFrame();
-#endif
             ImGui_ImplSDL2_NewFrame();
+            ImGuiIO &io = ImGui::GetIO();
+            io.DeltaTime = delta_time > 0.0f ? delta_time : 1.0f / 60.0f;
             ImGui::NewFrame();
-
             if (input)
             {
-                ImGuiIO &io = ImGui::GetIO();
-                io.DeltaTime = delta_time > 0.0f ? delta_time : 0.0001f;
                 input->ui_wants_mouse = io.WantCaptureMouse;
                 input->ui_wants_keyboard = io.WantCaptureKeyboard;
             }
@@ -224,53 +126,117 @@ namespace Genesis
             ImGui::Render();
         }
 
-        void UISystem::renderInto(RHI::RHICommandBuffer *cmd, uint32_t width, uint32_t height)
+        void UISystem::renderInto(RHI::RHICommandBuffer *cmd, const Render::TargetRef &target)
         {
-            if (!initialized_ || !ui_visible || !cmd) return;
-            ImDrawData *draw_data = ImGui::GetDrawData();
-            if (!draw_data) return;
+            last_draw_calls_ = 0;
+            if (!initialized_ || !ui_visible || !cmd || !render_) return;
+            ImDrawData *dd = ImGui::GetDrawData();
+            if (!dd || dd->TotalVtxCount == 0 || dd->DisplaySize.x <= 0.0f || dd->DisplaySize.y <= 0.0f) return;
 
-#if GENESIS_RHI_VULKAN
-            if (use_vulkan_)
+            // ImGui works in window points; the target is in pixels.  Scale
+            // to the target so captures of a different size stay correct.
+            const float fb_w = (float)target.width, fb_h = (float)target.height;
+            const float sx = fb_w / dd->DisplaySize.x, sy = fb_h / dd->DisplaySize.y;
+
+            Render::PipelineKey key;
+            key.vertex_shader = "ui/imgui.vert";
+            key.fragment_shader = "ui/imgui.frag";
+            key.layout = &render_->uiLayout()->desc();
+            key.vertex_layout = Render::VertexLayoutKind::ImGui;
+            key.cull = RHI::CullMode::None;
+            key.depth_test = false;
+            key.depth_write = false;
+            key.blend = Render::BlendPreset::Alpha;
+            key.color_format = target.color_format;
+            key.depth_format = target.depth_format;
+            RHI::RHIPipeline *pipeline = render_->pipelines().get(key, "imgui");
+            if (!pipeline) return;
+
+            // Upload all vertices / indices of the frame at once.
+            std::vector<ImDrawVert> vertices;
+            std::vector<ImDrawIdx> indices;
+            vertices.reserve((size_t)dd->TotalVtxCount);
+            indices.reserve((size_t)dd->TotalIdxCount);
+            for (int n = 0; n < dd->CmdListsCount; ++n)
             {
-                ImGui_ImplVulkan_RenderDrawData(draw_data, reinterpret_cast<VkCommandBuffer>(cmd->nativeHandle()));
-                return;
+                const ImDrawList *list = dd->CmdLists[n];
+                vertices.insert(vertices.end(), list->VtxBuffer.Data, list->VtxBuffer.Data + list->VtxBuffer.Size);
+                indices.insert(indices.end(), list->IdxBuffer.Data, list->IdxBuffer.Data + list->IdxBuffer.Size);
             }
-#endif
-#if GENESIS_RHI_OPENGL
-            // The GL backend executes immediately; make sure the viewport is
-            // restored for whatever follows.
-            ImGui_ImplOpenGL3_RenderDrawData(draw_data);
-            cmd->setViewport(RHI::Viewport{0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f});
-            cmd->setScissor(RHI::Rect2D{0, 0, width, height});
-#endif
+            Render::FrameAllocator &frames = render_->frames();
+            Render::TransientAllocation vb = frames.uploadVertices(vertices.data(), vertices.size() * sizeof(ImDrawVert));
+            Render::TransientAllocation ib = frames.uploadVertices(indices.data(), indices.size() * sizeof(ImDrawIdx));
+            if (!vb.valid() || !ib.valid()) return;
+
+            // points -> clip, with the target orientation folded in.
+            const float ndc_sy = target.row0_top ? 2.0f / fb_h : -2.0f / fb_h;
+            float push[4];
+            push[0] = 2.0f * sx / fb_w;
+            push[1] = ndc_sy * sy;
+            push[2] = -1.0f - dd->DisplayPos.x * push[0];
+            push[3] = (target.row0_top ? -1.0f : 1.0f) - dd->DisplayPos.y * push[1];
+
+            cmd->setViewport(RHI::Viewport{0.0f, 0.0f, fb_w, fb_h, 0.0f, 1.0f});
+            cmd->bindPipeline(pipeline);
+            cmd->bindVertexBuffer(vb.buffer, vb.offset);
+            cmd->bindIndexBuffer(ib.buffer, sizeof(ImDrawIdx) == 2 ? RHI::IndexType::UInt16 : RHI::IndexType::UInt32, ib.offset);
+            cmd->setPushConstants(push, sizeof(push));
+
+            uint32_t vtx_base = 0, idx_base = 0;
+            RHI::RHITexture *bound = nullptr;
+            for (int n = 0; n < dd->CmdListsCount; ++n)
+            {
+                const ImDrawList *list = dd->CmdLists[n];
+                for (int c = 0; c < list->CmdBuffer.Size; ++c)
+                {
+                    const ImDrawCmd &dc = list->CmdBuffer[c];
+                    if (dc.UserCallback)
+                    {
+                        if (dc.UserCallback != ImDrawCallback_ResetRenderState) dc.UserCallback(list, &dc);
+                        continue;
+                    }
+                    float x0 = (dc.ClipRect.x - dd->DisplayPos.x) * sx;
+                    float y0 = (dc.ClipRect.y - dd->DisplayPos.y) * sy;
+                    float x1 = (dc.ClipRect.z - dd->DisplayPos.x) * sx;
+                    float y1 = (dc.ClipRect.w - dd->DisplayPos.y) * sy;
+                    x0 = std::max(0.0f, x0);
+                    y0 = std::max(0.0f, y0);
+                    x1 = std::min(fb_w, x1);
+                    y1 = std::min(fb_h, y1);
+                    if (x1 <= x0 || y1 <= y0) continue;
+                    const float row_y = target.row0_top ? y0 : fb_h - y1;
+                    cmd->setScissor(RHI::Rect2D{(int32_t)x0, (int32_t)row_y, (uint32_t)(x1 - x0 + 0.5f),
+                                                (uint32_t)(y1 - y0 + 0.5f)});
+                    RHI::RHITexture *tex = (RHI::RHITexture *)dc.GetTexID();
+                    if (!tex) tex = font_texture_;
+                    if (tex != bound)
+                    {
+                        RHI::RHIDescriptorSet *set = render_->textureSet(render_->uiLayout(), tex, render_->linearClampSampler(), false);
+                        if (!set) continue;
+                        cmd->bindDescriptorSets(pipeline, &set, 1, nullptr, 0);
+                        bound = tex;
+                    }
+                    cmd->drawIndexed(dc.ElemCount, idx_base + dc.IdxOffset, (int32_t)(vtx_base + dc.VtxOffset), 1, 0);
+                    ++last_draw_calls_;
+                }
+                vtx_base += (uint32_t)list->VtxBuffer.Size;
+                idx_base += (uint32_t)list->IdxBuffer.Size;
+            }
+            cmd->setScissor(RHI::Rect2D{0, 0, target.width, target.height});
         }
 
         void UISystem::setStyle(StylePreset preset)
         {
             ImGuiStyle &style = ImGui::GetStyle();
-            style.WindowRounding = 4.0f;
-            style.FrameRounding = 2.0f;
-            style.GrabRounding = 2.0f;
-            style.ChildRounding = 3.0f;
-            style.PopupRounding = 3.0f;
-            style.ScrollbarRounding = 3.0f;
-            style.FramePadding = ImVec2(6, 4);
-            style.ItemSpacing = ImVec2(8, 5);
-            style.WindowPadding = ImVec2(8, 8);
-
-            ImVec4 *c = style.Colors;
             switch (preset)
             {
-            case StylePreset::Light:
-                ImGui::StyleColorsLight(&style);
-                break;
-            case StylePreset::Dark:
-                ImGui::StyleColorsDark(&style);
-                break;
+            case StylePreset::Light: ImGui::StyleColorsLight(&style); break;
+            case StylePreset::Dark: ImGui::StyleColorsDark(&style); break;
             case StylePreset::Genesis:
             default:
+            {
                 ImGui::StyleColorsDark(&style);
+                ImVec4 *c = style.Colors;
                 c[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.08f, 0.10f, 0.94f);
                 c[ImGuiCol_TitleBg] = ImVec4(0.10f, 0.12f, 0.16f, 1.00f);
                 c[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.28f, 0.42f, 1.00f);
@@ -286,12 +252,30 @@ namespace Genesis
                 c[ImGuiCol_Text] = ImVec4(0.92f, 0.94f, 0.96f, 1.00f);
                 break;
             }
+            }
+            style.WindowRounding = 4.0f;
+            style.FrameRounding = 2.0f;
+            style.GrabRounding = 2.0f;
+            style.ChildRounding = 3.0f;
+            style.PopupRounding = 3.0f;
+            style.ScrollbarRounding = 3.0f;
+            style.FramePadding = ImVec2(6, 4);
+            style.ItemSpacing = ImVec2(8, 5);
+            style.WindowPadding = ImVec2(8, 8);
         }
 
         void UISystem::pushLog(const std::string &line)
         {
             logs_.push_back(line);
             if (logs_.size() > 400) logs_.erase(logs_.begin(), logs_.begin() + (logs_.size() - 400));
+        }
+
+        void image(const Render::RenderTexturePtr &texture, float width, float height)
+        {
+            if (!texture || !texture->valid()) return;
+            float u0, v0, u1, v1;
+            Render::RenderTexture::displayUV(u0, v0, u1, v1);
+            ImGui::Image((ImTextureID)texture->color(), ImVec2(width, height), ImVec2(u0, v0), ImVec2(u1, v1));
         }
 
     } // namespace UI
