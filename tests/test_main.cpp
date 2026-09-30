@@ -3,18 +3,23 @@
  *
  * Usage:
  *   genesis_tests [--filter SUBSTR] [--verbose] [--no-gpu]
- *                 [--backend gl|vulkan] [--all-backends] [--no-window]
+ *                 [--backend gl|vulkan|metal] [--all-backends] [--no-window]
  *
  * CPU-only groups (math, ecs, procedural, gltf, fbx, image, shaders, script,
- * render_ubo) always run.  GPU groups run once per available backend
- * (OpenGL, Vulkan, Metal); with --all-backends (default) the suite also
- * compares the renders of the same scene on every pair of backends.
+ * render_ubo, reflection, command_buffer) always run.  GPU groups run once
+ * per available backend (OpenGL, Vulkan, Metal); with --all-backends
+ * (default) the suite also renders two reference scenes (PBR spheres and a
+ * feature scene: render texture, command buffers, SDF text, unlit /
+ * transparent materials, post effect) on every backend and compares every
+ * pair pixel by pixel.
  */
 #include "test_framework.hpp"
 
 #include "engine/engine.hpp"
 #include "foundation_layer/genesis_log.hpp"
+#include "reflection/engine_bindings.hpp"
 #include "renderer/render_internal.hpp"
+#include "renderer/render_system.hpp"
 #include "resource/procedural_mesh.hpp"
 
 #include <cstring>
@@ -22,6 +27,10 @@
 #include <vector>
 
 using namespace Genesis;
+
+#ifndef GENESIS_ASSET_DIR
+#define GENESIS_ASSET_DIR "assets"
+#endif
 
 namespace gpu_test
 {
@@ -42,12 +51,13 @@ namespace
         bool ok = false;
     };
 
-    Capture renderReferenceScene(RHI::BackendType backend)
+    Capture renderReferenceScene(RHI::BackendType backend, bool features)
     {
         Capture out;
         Engine engine;
         EngineConfig cfg;
         cfg.app_name = "genesis-cross-backend";
+        cfg.asset_dir = GENESIS_ASSET_DIR;
         cfg.width = cfg.height = 160;
         cfg.backend = backend;
         cfg.headless = true;
@@ -131,6 +141,50 @@ namespace
         s.shading_mode = Render::ShadingMode::CookTorrance;
         s.frustum_culling = true;
 
+        if (features)
+        {
+            // Render texture seen by a second view, shown on an unlit quad;
+            // transparent sphere; 2D + 3D SDF text; overlay command buffer;
+            // built-in post effect.
+            Render::RenderSystem &rs = engine.render();
+            Render::RenderTexturePtr rt = rs.createRenderTexture("xb_rt", 64, 64, true, true);
+            auto off = std::make_shared<Render::CommandBuffer>("xb_offscreen");
+            off->setRenderTarget(rt);
+            off->clearRenderTarget(true, Math::Color(0.1f, 0.1f, 0.2f, 1.0f), true);
+            off->setCamera(Math::Vec3(0.0f, 2.5f, 2.5f), Math::Vec3(0.0f), 50.0f);
+            off->drawScene();
+            rs.addCommandBuffer(Render::CameraEvent::BeforeScene, off);
+            Render::MaterialPtr screen = rs.scene().createMaterial("xb_screen");
+            screen->shading = Render::MaterialShading::Unlit;
+            screen->setRenderTexture(Render::TextureSlot::BaseColor, rt);
+            ECS::Entity quad = world.createEntity("xb_quad");
+            Reflect::attachMesh(quad, Reflect::createMeshAsset("box", 1.0f), screen);
+            if (auto *t = world.getComponent<ECS::TransformComponent>(quad))
+            {
+                t->setPosition(Math::Vec3(0.0f, 0.95f, -0.8f));
+                t->scale = Math::Vec3(1.2f, 0.7f, 0.05f);
+            }
+            Render::MaterialPtr glass = rs.scene().createMaterial("xb_glass");
+            glass->base_color = Math::Color(0.3f, 1.0f, 0.4f, 0.4f);
+            glass->blend = Render::MaterialBlend::Transparent;
+            ECS::Entity g = world.createEntity("xb_glass");
+            Reflect::attachMesh(g, Reflect::createMeshAsset("sphere", 0.6f, 32), glass);
+            if (auto *t = world.getComponent<ECS::TransformComponent>(g)) t->setPosition(Math::Vec3(0.6f, -0.5f, 0.6f));
+            ECS::TextComponent label;
+            label.text = "Genesis";
+            label.size = 0.22f;
+            label.offset = Math::Vec3(0.0f, 0.7f, 0.0f);
+            label.outline = 0.2f;
+            world.addComponent<ECS::TextComponent>(g, label);
+            auto hud = std::make_shared<Render::CommandBuffer>("xb_hud");
+            hud->drawRect(4, 4, 70, 22, Math::Color(0, 0, 0, 0.6f));
+            hud->drawText("SDF 2D", 8, 6, 16.0f, Math::Color(1, 0.8f, 0.2f, 1), Text::TextAlign::Left, 0.2f);
+            hud->drawLine2D(Math::Vec2(4, 150), Math::Vec2(156, 150), Math::Color(0.2f, 0.8f, 1.0f, 1), 2.0f);
+            rs.addCommandBuffer(Render::CameraEvent::Overlay, hud);
+            s.post_effect = Render::PostEffect::Vignette;
+            s.post_params = Math::Vec4(0.8f, 2.0f, 0.0f, 0.0f);
+        }
+
         // Run a couple of frames so transforms and the UBO ring settle.
         engine.tick();
         engine.tick();
@@ -142,19 +196,20 @@ namespace
     // Renders the reference scene on every available backend and compares
     // each pair pixel by pixel: the strongest guarantee that OpenGL, Vulkan
     // and Metal really implement the same renderer.
-    bool compareBackends(const std::vector<RHI::BackendType> &backends)
+    bool compareBackends(const std::vector<RHI::BackendType> &backends, bool features)
     {
-        GEN_LOG_INFO("=== cross backend comparison (%zu backends) ===", backends.size());
+        const char *scene = features ? "features" : "pbr";
+        GEN_LOG_INFO("=== cross backend comparison, %s scene (%zu backends) ===", scene, backends.size());
         std::vector<Capture> captures;
         for (RHI::BackendType b : backends)
         {
-            captures.push_back(renderReferenceScene(b));
+            captures.push_back(renderReferenceScene(b, features));
             if (!captures.back().ok)
             {
                 GEN_LOG_ERROR("[cross-backend] %s capture failed", RHI::backendTypeName(b));
                 return false;
             }
-            std::string path = std::string("/tmp/genesis_cross_backend_") + RHI::backendTypeName(b) + ".png";
+            std::string path = std::string("/tmp/genesis_cross_backend_") + scene + "_" + RHI::backendTypeName(b) + ".png";
             ResourceIO::writeImagePNG(path, captures.back().width, captures.back().height, captures.back().rgba.data());
         }
         bool all_ok = true;
@@ -184,13 +239,14 @@ namespace
                 // structural mismatch (orientation, culling, missing geometry,
                 // wrong lighting) is orders of magnitude larger.
                 const bool ok = (mean < 3.0) && (ratio < 0.05);
-                GEN_LOG_INFO("[cross-backend] %s vs %s: mean diff %.3f/255, worst %.0f, >4 off %.2f%% -> %s",
+                GEN_LOG_INFO("[cross-backend] %s: %s vs %s: mean diff %.3f/255, worst %.0f, >4 off %.2f%% -> %s", scene,
                              RHI::backendTypeName(backends[i]), RHI::backendTypeName(backends[j]), mean, worst, ratio * 100.0,
                              ok ? "MATCH" : "MISMATCH");
                 all_ok = all_ok && ok;
             }
         }
-        GEN_LOG_INFO("[cross-backend] %s (images in /tmp/genesis_cross_backend_<backend>.png)", all_ok ? "MATCH" : "MISMATCH");
+        GEN_LOG_INFO("[cross-backend] %s scene: %s (images in /tmp/genesis_cross_backend_%s_<backend>.png)", scene,
+                     all_ok ? "MATCH" : "MISMATCH", scene);
         return all_ok;
     }
 } // namespace
@@ -302,7 +358,10 @@ int main(int argc, char **argv)
 
     bool cross_ok = true;
     if (run_gpu && all_backends && backends.size() >= 2 && filter.empty())
-        cross_ok = compareBackends(backends);
+    {
+        cross_ok = compareBackends(backends, false);
+        cross_ok = compareBackends(backends, true) && cross_ok;
+    }
 
     int failures = GenesisTest::Registry::instance().failures();
     int checks = GenesisTest::Registry::instance().checks();

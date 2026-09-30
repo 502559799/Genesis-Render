@@ -423,6 +423,10 @@ namespace Genesis
                     GEN_LOG_WARN("[VK] VK_LAYER_KHRONOS_validation not found; continuing without validation");
                     extensions.erase(std::remove(extensions.begin(), extensions.end(), VK_EXT_DEBUG_UTILS_EXTENSION_NAME), extensions.end());
                 }
+                else
+                {
+                    GEN_LOG_INFO("[VK] validation layer VK_LAYER_KHRONOS_validation enabled");
+                }
             }
 
             VkInstanceCreateInfo ci{};

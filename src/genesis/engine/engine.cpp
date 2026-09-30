@@ -240,8 +240,13 @@ namespace Genesis
     {
         if (!initialized_ || !render_) return false;
         float delta_time = (float)std::min<double>(timer_.tick(), config_.max_delta_time);
-        // Run the simulation systems first so transforms (and any script driven
-        // changes) are up to date, exactly like a normal tick does.
+        // Same order as tick(): UI frame, simulation systems, render.
+        if (config_.enable_ui)
+        {
+            ui_.beginFrame(&input_, delta_time);
+            if (ui_draw_callback_) ui_draw_callback_(*this);
+            ui_.endFrame();
+        }
         world_->update(delta_time);
         return render_->renderAndCapture(*world_, delta_time, rgba_out, width, height);
     }
