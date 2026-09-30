@@ -97,7 +97,8 @@ namespace Genesis
                 target_ = t;
                 has_target_ = t.valid();
                 custom_viewport_ = false;
-                pending_clear_ = false;
+                // swapchain contents are undefined until the first pass of the frame
+                pending_clear_ = (t == present_ && !present_rendered_);
                 if (following_main_) setMainView(); // keep the aspect right
             }
 
@@ -418,10 +419,24 @@ namespace Genesis
                 return m.ubo_offset;
             }
 
+            // Reading the texture that is being rendered to is undefined on every backend.
+            bool samplesTarget(const Material &m) const
+            {
+                if (!target_.color) return false;
+                for (const Material::Slot &s : m.slots)
+                    if (s.enabled && s.render_texture && s.render_texture->color() == target_.color) return true;
+                return false;
+            }
+
             void drawMeshItem(GpuMesh *mesh, Material *material, const Math::Mat4 &model, const Math::Mat4 &normal_matrix,
                               uint32_t pick_id)
             {
                 if (!mesh || !material || !has_target_) return;
+                if (samplesTarget(*material))
+                {
+                    ++rs_.stats_.feedback_skips;
+                    return;
+                }
                 flushBatch();
                 ensurePass();
                 if (!rs_.scene_->prepareMaterial(*material)) return;
@@ -1030,15 +1045,18 @@ namespace Genesis
 
             void custom()
             {
+                // Only the events that do not depend on the built-in scene pass
+                // exist here: BeforeScene (offscreen preparation) and Overlay.
                 auto start = std::chrono::steady_clock::now();
+                runEvent(CameraEvent::BeforeScene, rs_.hdr_target_->target());
                 setTarget(present_);
-                pending_clear_ = true; // present an empty frame if nothing draws
                 for (const CommandBufferPtr &cb : rs_.custom_)
                     if (cb) execute(*cb, present_);
                 for (const CommandBufferPtr &cb : rs_.once_)
                     if (cb) execute(*cb, present_);
-                const CommandBuffer &imm = rs_.immediate_[(size_t)CameraEvent::Overlay];
-                if (!imm.empty()) execute(imm, present_);
+                setTarget(present_);
+                setMainView();
+                runEvent(CameraEvent::Overlay, present_);
                 flushBatch();
                 rs_.stats_.scene_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             }

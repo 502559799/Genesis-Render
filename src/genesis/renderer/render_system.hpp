@@ -92,6 +92,7 @@ namespace Genesis
             uint32_t commands = 0;
             uint32_t batched_quads = 0;
             uint32_t passes = 0;
+            uint32_t feedback_skips = 0; // draws skipped because they sampled the target being rendered
             double scene_ms = 0.0;
             double present_ms = 0.0;
             uint64_t uniform_bytes = 0;
