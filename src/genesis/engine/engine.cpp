@@ -4,6 +4,7 @@
 #include "engine/engine.hpp"
 #include "foundation_layer/genesis_log.hpp"
 #include "resource/resource_types.hpp"
+#include "reflection/engine_bindings.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -88,6 +89,10 @@ namespace Genesis
             return false;
         }
 
+        // Everything scripts / tools reach through RTTI.
+        Reflect::registerEngineTypes();
+        Reflect::context() = Reflect::EngineContext{this, world_.get(), render_, &input_};
+
         if (config_.enable_script)
         {
             script_ = world_->scheduler().addSystem<Script::ScriptSystem>();
@@ -129,6 +134,7 @@ namespace Genesis
         if (device_) device_->waitIdle();
 
         if (config_.enable_ui) ui_.shutdown();
+        if (Reflect::context().engine == this) Reflect::context() = Reflect::EngineContext();
 
         // RenderSystem must release its GPU objects before the device dies.
         if (render_) render_->shutdown();

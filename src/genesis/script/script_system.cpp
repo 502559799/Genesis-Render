@@ -2,6 +2,8 @@
  * Genesis Render - Lua scripting system implementation
  */
 #include "script/script_system.hpp"
+#include "script/lua_reflection.hpp"
+#include "reflection/engine_bindings.hpp"
 #include "foundation_layer/genesis_log.hpp"
 #include "resource/procedural_mesh.hpp"
 #include "resource/resource_types.hpp"
@@ -843,7 +845,11 @@ namespace Genesis
             lua_setfield(lua_state_, LUA_REGISTRYINDEX, kContextKey);
 
             registerApi();
-            GEN_LOG_INFO("[Lua] %s ready (%s)", LUA_VERSION, LUA_RELEASE);
+            // Generic RTTI binding: every reflected engine type (entities,
+            // components, renderer, materials, command buffers, ...).
+            openReflection(lua_state_);
+            GEN_LOG_INFO("[Lua] %s ready (%s), %zu reflected types", LUA_VERSION, LUA_RELEASE,
+                         Reflect::Registry::instance().types().size());
             return true;
         }
 
@@ -999,6 +1005,9 @@ namespace Genesis
             lua_pushglobaltable(lua_state_);
             lua_setfield(lua_state_, -2, "__index");
             lua_setmetatable(lua_state_, -2);
+            // `this`: the entity that owns the script, as a reflected object.
+            pushValue(lua_state_, Reflect::entityValue(world_, entity));
+            lua_setfield(lua_state_, -2, "this");
 
             // Lua 5.4 dropped the `env` argument of lua_load: load the chunk
             // first, then replace its _ENV upvalue with our sandbox table.

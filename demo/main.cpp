@@ -61,6 +61,8 @@ namespace
         std::string screenshot;
         std::string showcase_dir;   // --showcase DIR : render a labelled proof-image set
         std::string asset_dir = GENESIS_ASSET_DIR;
+        std::string scene = "showcase";   // showcase | empty
+        std::string script;               // Lua file executed after the scene is built
     };
 
     DemoOptions parseArgs(int argc, char **argv)
@@ -86,6 +88,8 @@ namespace
             else if (a == "--screenshot") o.screenshot = next("");
             else if (a == "--showcase") o.showcase_dir = next("docs/images");
             else if (a == "--asset-dir") o.asset_dir = next(GENESIS_ASSET_DIR);
+            else if (a == "--scene") o.scene = next("showcase");
+            else if (a == "--script") o.script = next("");
             else if (a == "--help" || a == "-h")
             {
                 std::printf("usage: genesis_demo [--backend gl|vulkan] [--headless] [--frames N]\n"
@@ -158,7 +162,16 @@ namespace
             cfg.vsync = options.headless ? false : true;
             if (!engine.initialize(cfg)) return false;
 
-            buildScene();
+            if (options.scene != "empty") buildScene();
+            if (!options.script.empty() && engine.hasScript())
+            {
+                // start()/tick() of the script run like any other entity script.
+                ECS::Entity host = engine.world().createEntity("ScriptHost");
+                engine.world().addComponent<ECS::TransformComponent>(host);
+                ECS::ScriptComponent sc;
+                sc.script_path = options.script;
+                engine.world().addComponent<ECS::ScriptComponent>(host, sc);
+            }
             engine.setUiDrawCallback([this](Engine &e) { drawUI(e); });
             return true;
         }
