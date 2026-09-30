@@ -798,7 +798,7 @@ namespace Genesis
                                 return path.isNil() || path.asString().empty() ? r.bakeProceduralIBL({}) : r.bakeIBL(path.asString(), {});
                             })
                     .method("drawLine", [](RS &r, Math::Vec3 a, Math::Vec3 b, Value color) { r.drawLine(a, b, colorArg(color, Math::Color::white())); },
-                            "debug line (cleared by clearDebugLines)")
+                            "debug line for the current frame (cleared after each frame)")
                     .method("clearDebugLines", [](RS &r) { r.clearDebugLines(); });
             }
 

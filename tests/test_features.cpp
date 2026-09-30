@@ -363,6 +363,23 @@ TEST_GPU(commandbuffer, sampling_the_current_target_is_skipped)
     }
 }
 
+TEST_GPU(render, debug_lines_last_one_frame)
+{
+    if (!g_available) return;
+    TestEngine te;
+    if (!te.init(64, 64)) return;
+    te.addCamera(Math::Vec3(0, 0, 3), Math::Vec3(0, 0, 0), 40.0f);
+    plainOutput(te);
+    Render::RenderSystem &rs = te.engine.render();
+    rs.drawBox(Math::AABB{Math::Vec3(-0.6f), Math::Vec3(0.6f), true}, Math::Color(1, 1, 1, 1));
+    Image with_lines, next_frame;
+    CHECK(te.capture(with_lines));
+    CHECK(te.capture(next_frame));
+    if (!with_lines.valid() || !next_frame.valid()) return;
+    CHECK_MSG(with_lines.countAbove(0.5f) > 20, "debug lines drawn in the frame they were added");
+    CHECK_MSG(next_frame.countAbove(0.5f) == 0, "debug lines do not accumulate across frames");
+}
+
 //======================================================================
 // SDF text (GPU)
 //======================================================================

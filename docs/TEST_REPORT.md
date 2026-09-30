@@ -39,7 +39,7 @@
 
 ```
 ./build/bin/genesis_tests
-tests run      : 121        (34 CPU + 29 GPU × OpenGL / Vulkan / Metal)
+tests run      : 124        (34 CPU + 30 GPU × OpenGL / Vulkan / Metal)
 tests failed   : 0
 checks         : 114949
 cross backend  : MATCH

@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -189,9 +190,15 @@ namespace
             world.addComponent<ECS::LightComponent>(e, l);
         }
 
-        bool shoot(const std::string &path)
+        // `per_frame` re-records per-frame content (debug lines) before every frame.
+        bool shoot(const std::string &path, const std::function<void()> &per_frame = nullptr)
         {
-            for (int i = 0; i < 2; ++i) engine.tick(); // settle transforms / IBL
+            for (int i = 0; i < 2; ++i) // settle transforms / IBL
+            {
+                if (per_frame) per_frame();
+                engine.tick();
+            }
+            if (per_frame) per_frame();
             if (!engine.saveScreenshot(path))
             {
                 GEN_LOG_ERROR("[showcase] failed to write %s", path.c_str());
@@ -313,10 +320,14 @@ namespace
             {
                 buildMaterialGridScene(rig, options, false);
                 rig.engine.render().settings().wireframe = false;
-                rig.engine.render().drawBox(Math::AABB{Math::Vec3(-3.6f, -2.0f, -0.6f), Math::Vec3(3.6f, 2.0f, 0.6f), true},
-                                            Math::Color(1.0f, 0.85f, 0.2f));
-                rig.engine.render().drawSphere(Math::Vec3(0, 0, 0), 2.6f, Math::Color(0.3f, 1.0f, 0.6f), 28);
-                if (!rig.shoot(path("debug_gizmos"))) ++failures;
+                Render::RenderSystem &rs = rig.engine.render();
+                auto gizmos = [&rs]()
+                {
+                    rs.drawBox(Math::AABB{Math::Vec3(-3.6f, -2.0f, -0.6f), Math::Vec3(3.6f, 2.0f, 0.6f), true},
+                               Math::Color(1.0f, 0.85f, 0.2f));
+                    rs.drawSphere(Math::Vec3(0, 0, 0), 2.6f, Math::Color(0.3f, 1.0f, 0.6f), 28);
+                };
+                if (!rig.shoot(path("debug_gizmos"), gizmos)) ++failures;
             }
             else ++failures;
         }

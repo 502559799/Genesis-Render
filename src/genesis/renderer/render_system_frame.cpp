@@ -1219,6 +1219,7 @@ namespace Genesis
         {
             for (auto &cb : immediate_) cb.clear();
             once_.clear();
+            debug_vertices_.clear();
             ++stats_.frame_index;
         }
 
