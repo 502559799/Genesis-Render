@@ -9,7 +9,32 @@ ECS、glTF/GLB/FBX/OBJ 导入、PBR + IBL、HDR 色调映射与后处理、ImGui
 - **材质系统**：可编辑材质对象（PBR 参数、Cook-Torrance/Blinn-Phong/Unlit、混合/剔除/深度状态、5 个纹理槽可接文件或渲染纹理、UV 变换、克隆），**UI 实时编辑 + 实时预览**；
 - **SDF 文字**：2D 屏幕文字、3D 世界文字（公告牌/任意朝向）、实体文字标签、描边。
 
-![showcase](docs/images/features/mtl_showcase_material.png)
+## 效果展示
+
+**同一场景在三个后端上的渲染结果**（自动化测试中三端逐像素比对，差异 0/255）：
+
+![OpenGL / Vulkan / Metal](docs/images/demo/three_backends.png)
+
+<table>
+<tr>
+<td width="50%"><b>材质实时编辑 + 实时预览</b><br>材质编辑器修改 Gold 的粗糙度与颜色，预览窗（CommandBuffer 渲染到纹理）与场景中所有使用该材质的物体同步变化<br><img src="docs/images/demo/material_live_edit.gif" alt="material editor"></td>
+<td width="50%"><b>CommandBuffer 自定义渲染管线</b><br>用户命令缓冲构建整帧：scene → HDR RT → tonemap → edge → backbuffer，画中画为原图，随后切到分屏对比；左侧为渲染到纹理的安防摄像头<br><img src="docs/images/demo/custom_pipeline.gif" alt="custom pipeline"></td>
+</tr>
+<tr>
+<td width="50%"><b>SDF 文字（2D + 3D）</b><br>2D 文字字号实时变化并带描边，字号阶梯展示同一 SDF 图集的缩放清晰度；场景中为旋转的 3D 世界文字与实体标签<br><img src="docs/images/demo/sdf_text.gif" alt="sdf text"></td>
+<td width="50%"><b>纯 Lua（RTTI）搭建的场景</b><br><code>assets/scripts/scene_builder.lua</code> 只通过反射接口创建相机、灯光、HDR 环境、材质、网格、glTF 模型、3D 标签和 HUD 命令缓冲<br><img src="docs/images/demo/lua_rtti_scene.gif" alt="lua scene"></td>
+</tr>
+</table>
+
+| 功能截图（Metal） | |
+|---|---|
+| ![material](docs/images/features/mtl_showcase_material.png) | ![commandbuffer](docs/images/features/mtl_showcase_commandbuffer.png) |
+| 材质编辑器 | CommandBuffer 实验室（渲染到纹理、后处理、管线控制） |
+| ![inspector](docs/images/features/mtl_showcase_inspector.png) | ![lua cb](docs/images/features/mtl_commandbuffer_none.png) |
+| 反射 Inspector | Lua CommandBuffer 示例（RT 显示器 + 画中画 + HUD） |
+
+GL / Vulkan 的同组截图见 [`docs/images/features/`](docs/images/features)，headless 能力图（PBR 网格、色调映射、IBL、模型导入）见 [`docs/images/`](docs/images)。
+上面的动图由 demo 自己录制：`genesis_demo --backend metal --tour --record frames/`（固定时间步逐帧截图，见下文参数），再用 ffmpeg 合成。
 
 ## 快速开始
 
@@ -49,6 +74,8 @@ sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers xvfb   # 可选 Vulkan
 | `--showcase DIR` | headless 生成一组能力证明图 |
 | `--validation` | 打开后端校验 |
 | `--selftest` | 自动遍历全部场景、面板与交互路径后退出（有错误则非零退出码） |
+| `--tour` | 约 16 秒的自动功能演示（材质实时编辑 → 自定义管线 → SDF 文字 → Lua 场景） |
+| `--record DIR [--record-fps F]` | 以固定时间步把每帧保存为 `DIR/frame_NNNN.png`（配合 `--tour` 录制演示） |
 | `--width/--height`、`--headless`、`--no-ui`、`--no-script`、`--asset-dir` | 常规选项 |
 
 界面入口（菜单 Windows）：**Engine**（后端/设备/统计/截图）、**Render settings**（反射生成）、**Hierarchy / Inspector**（反射编辑任意组件）、**Material editor**（材质库、实时预览、参数、纹理槽、指定给实体）、**CommandBuffer lab**（渲染到纹理的安防摄像头、后处理、自定义管线效果链/画中画/分屏）、**SDF text lab**（2D/3D 文字）、**Lua console**（示例片段）、Log、Controls。

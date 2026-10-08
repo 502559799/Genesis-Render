@@ -63,6 +63,7 @@ namespace Demo
         cfg.enable_script = options.enable_script;
         cfg.max_frames = options.frames;
         cfg.vsync = !options.headless;
+        if (!options.record_dir.empty()) cfg.fixed_delta_time = 1.0f / std::max(1.0f, options.record_fps);
         if (!engine.initialize(cfg)) return false;
 
         // Textures offered by the material editor.
@@ -415,7 +416,9 @@ namespace Demo
     void DemoApp::tick(float dt)
     {
         applyPendingScene();
+        if (options.tour) tourStep(dt);
         time_ += dt;
+        if (preview_rotate_) preview_yaw_ += 0.6f * dt;
         animate(dt);
         // Scripts may switch the pipeline too: only write it when the demo toggle changes.
         Render::RenderSettings &s = engine.render().settings();
@@ -452,6 +455,57 @@ namespace Demo
         (void)dt;
     }
 
+    // --tour: a fixed timeline that drives the same state the UI panels edit.
+    //   0 - 5 s   showcase, material editor: live roughness / colour edits
+    //   5 - 9 s   CommandBuffer lab: custom pipeline (edge), then split view
+    //   9 - 12 s  SDF text lab: 2D size ramp + spinning 3D text
+    //  12 - 16 s  scene built by Lua through RTTI
+    void DemoApp::tourStep(float dt)
+    {
+        tour_time_ += dt;
+        const float t = tour_time_;
+        const int phase = t < 5.0f ? 0 : t < 9.0f ? 1 : t < 12.0f ? 2 : 3;
+        if (phase != tour_phase_)
+        {
+            tour_phase_ = phase;
+            show_render_ = show_inspector_ = show_console_ = show_log_ = show_help_ = false;
+            show_engine_ = true;
+            show_material_ = phase == 0;
+            show_cb_ = phase == 1;
+            show_text_ = phase == 2;
+            custom_pipeline_ = phase == 1;
+            custom_split_ = false;
+            custom_pip_ = true;
+            custom_effect_a_ = (int)Render::PostEffect::Edge;
+            custom_effect_b_ = (int)Render::PostEffect::None;
+            if (phase == 0)
+            {
+                if (Render::MaterialPtr gold = engine.render().scene().findMaterial("Gold"))
+                {
+                    material_index_ = gold->index;
+                    scroll_to_material_ = true;
+                }
+            }
+            if (phase == 3) pending_scene_ = SceneKind::LuaScene;
+        }
+        if (phase == 0)
+        {
+            if (Render::MaterialPtr m = selectedMaterial())
+            {
+                const float k = 0.5f + 0.5f * std::sin(t * 1.6f);
+                m->roughness = 0.05f + 0.7f * k;
+                m->base_color = Math::Color(1.0f, 0.76f - 0.4f * k, 0.33f + 0.4f * k, 1.0f);
+                m->touch();
+            }
+        }
+        if (phase == 1) custom_split_ = t > 7.0f;
+        if (phase == 2) text2d_size_ = 36.0f + 18.0f * std::sin((t - 9.0f) * 2.0f);
+        // Gentle sway (+-15 degrees) so the view stays on the front of the scene.
+        const float sway = 15.0f * 0.8f * std::cos(t * 0.8f) * dt;
+        engine.world().each<ECS::CameraControllerComponent>([sway](ECS::Entity, ECS::CameraControllerComponent &c)
+                                                            { c.orbit_yaw_degrees += sway; });
+    }
+
     // Material preview: a command buffer injected before the scene renders the
     // selected material on a preview mesh into its own render texture, then
     // tone maps it into an LDR texture shown by the UI.
@@ -460,7 +514,6 @@ namespace Demo
         preview_cb_->clear();
         Render::MaterialPtr mat = selectedMaterial();
         if (!show_material_ || !mat || !engine.ui().ui_visible) return;
-        if (preview_rotate_) preview_yaw_ += 0.6f * (float)engine.frameTimeMs() * 0.001f;
         Reflect::MeshAssetPtr mesh = preview_meshes_[std::min<size_t>(preview_mesh_, preview_meshes_.size() - 1)];
         if (!mesh) mesh = preview_meshes_[0];
 

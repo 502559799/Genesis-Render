@@ -44,6 +44,7 @@ namespace Genesis
         bool enable_ui = true;
         bool enable_script = true;
         float max_delta_time = 0.1f;    // clamp huge frame steps (e.g. after a stall)
+        float fixed_delta_time = 0.0f;  // > 0: every frame advances by exactly this (recording)
         uint32_t max_frames = 0;        // 0 == run until the window closes
         std::string sdf_font_path;      // TTF for SDF text; "" disables text/overlay
     };
@@ -83,8 +84,9 @@ namespace Genesis
         void setUiDrawCallback(UiDrawCallback cb) { ui_draw_callback_ = cb; }
 
         // Statistics
-        float fps() const { return fps_; }
-        double frameTimeMs() const { return frame_ms_; }
+        // With a fixed time step these report the simulated rate.
+        float fps() const { return config_.fixed_delta_time > 0.0f ? 1.0f / config_.fixed_delta_time : fps_; }
+        double frameTimeMs() const { return config_.fixed_delta_time > 0.0f ? config_.fixed_delta_time * 1000.0 : frame_ms_; }
         uint64_t frameCount() const { return frame_count_; }
         double uptimeSeconds() const;
 
@@ -117,6 +119,8 @@ namespace Genesis
         uint64_t frame_count_ = 0;
         float fps_ = 0.0f;
         double frame_ms_ = 0.0;
+        double sim_time_ = 0.0;
+        float stepDelta(double real_seconds);
         double fps_accumulator_ = 0.0;
         uint32_t fps_frames_ = 0;
     };

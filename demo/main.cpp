@@ -18,6 +18,10 @@
  *   --asset-dir PATH           asset root (default: GENESIS_ASSET_DIR)
  *   --selftest                 drive every scene / panel / interaction path
  *                              for a few frames and exit (non-zero on errors)
+ *   --tour                     scripted walkthrough of the features (~16 s)
+ *   --record DIR               save every frame to DIR/frame_NNNN.png with a
+ *                              fixed time step (--record-fps, default 15);
+ *                              with --tour records the whole walkthrough
  */
 #include "demo_app.hpp"
 
@@ -25,6 +29,9 @@
 #include "resource/procedural_mesh.hpp"
 #include "resource/resource_types.hpp"
 
+#include <sys/stat.h>
+
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -44,7 +51,7 @@ namespace
             "                    [--script file.lua] [--lab material|commandbuffer|custom|text|inspector]\n"
             "                    [--headless] [--frames N] [--screenshot out.png] [--showcase DIR]\n"
             "                    [--width W] [--height H] [--validation] [--no-ui] [--no-script]\n"
-            "                    [--asset-dir DIR] [--selftest]\n"
+            "                    [--asset-dir DIR] [--selftest] [--tour] [--record DIR [--record-fps F]]\n"
             "\n"
             "  scenes   showcase       C++ scene: models, material library, labels, monitor\n"
             "           lua            scene built entirely by assets/scripts/scene_builder.lua\n"
@@ -81,6 +88,9 @@ namespace
             else if (a == "--script") o.script = next("");
             else if (a == "--lab") o.lab = next("");
             else if (a == "--selftest") o.selftest = true;
+            else if (a == "--tour") o.tour = true;
+            else if (a == "--record") o.record_dir = next("");
+            else if (a == "--record-fps") o.record_fps = (float)std::atof(next("15").c_str());
             else if (a == "--scene")
             {
                 std::string v = next("showcase");
@@ -415,7 +425,24 @@ int main(int argc, char **argv)
         return errors == 0 ? 0 : 4;
     }
 
-    if (!options.screenshot.empty())
+    if (!options.record_dir.empty())
+    {
+        mkdir(options.record_dir.c_str(), 0755);
+        const float dt = 1.0f / std::max(1.0f, options.record_fps);
+        const uint32_t count = options.frames ? options.frames
+                                              : (uint32_t)(Demo::DemoApp::kTourSeconds * std::max(1.0f, options.record_fps));
+        for (int i = 0; i < 3; ++i) app.engine.tick(); // IBL bake, script start
+        uint32_t written = 0;
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            char name[64];
+            std::snprintf(name, sizeof(name), "frame_%04u.png", i);
+            if (app.engine.saveScreenshot(ResourceIO::joinPath(options.record_dir, name))) ++written;
+            app.tick(dt);
+        }
+        GEN_LOG_INFO("recorded %u frames to %s at %.1f fps", written, options.record_dir.c_str(), options.record_fps);
+    }
+    else if (!options.screenshot.empty())
     {
         // Warm up (script start, IBL bake, first frames) then capture offscreen.
         Platform::Timer timer;

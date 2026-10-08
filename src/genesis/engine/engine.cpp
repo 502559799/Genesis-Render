@@ -165,7 +165,7 @@ namespace Genesis
         if (!initialized_) return false;
 
         double dt_seconds = timer_.tick();
-        float delta_time = (float)std::min<double>(dt_seconds, config_.max_delta_time);
+        float delta_time = stepDelta(dt_seconds);
         frame_ms_ = dt_seconds * 1000.0;
 
         fps_accumulator_ += dt_seconds;
@@ -233,13 +233,21 @@ namespace Genesis
 
     double Engine::uptimeSeconds() const
     {
-        return timer_.seconds();
+        return config_.fixed_delta_time > 0.0f ? sim_time_ : timer_.seconds();
+    }
+
+    float Engine::stepDelta(double real_seconds)
+    {
+        float dt = config_.fixed_delta_time > 0.0f ? config_.fixed_delta_time
+                                                   : (float)std::min<double>(real_seconds, config_.max_delta_time);
+        sim_time_ += dt;
+        return dt;
     }
 
     bool Engine::captureFrame(std::vector<uint8_t> &rgba_out, uint32_t &width, uint32_t &height)
     {
         if (!initialized_ || !render_) return false;
-        float delta_time = (float)std::min<double>(timer_.tick(), config_.max_delta_time);
+        float delta_time = stepDelta(timer_.tick());
         // Same order as tick(): UI frame, simulation systems, render.
         if (config_.enable_ui)
         {

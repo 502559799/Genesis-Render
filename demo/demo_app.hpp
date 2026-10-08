@@ -61,6 +61,9 @@ namespace Demo
         std::string script; // extra Lua file attached as a script entity
         std::string lab;    // pre-enabled lab for screenshots: material | commandbuffer | custom | text
         bool selftest = false;
+        bool tour = false;        // scripted feature walkthrough (camera, material edits, pipelines, scenes)
+        std::string record_dir;   // save every frame as DIR/frame_NNNN.png (fixed time step)
+        float record_fps = 15.0f;
     };
 
     class DemoApp
@@ -75,6 +78,8 @@ namespace Demo
         // Drives every scene, panel and interaction path for a few frames each
         // (used by --selftest); returns the number of errors logged meanwhile.
         int selfTest();
+        // Length of the --tour timeline in seconds.
+        static constexpr float kTourSeconds = 16.0f;
 
         std::string asset(const std::string &relative) const;
 
@@ -94,6 +99,7 @@ namespace Demo
 
         // ---- per frame ----------------------------------------------------
         void animate(float dt);
+        void tourStep(float dt);
         void recordMaterialPreview();
         void recordMonitor();
         void recordCustomPipeline();
@@ -120,6 +126,8 @@ namespace Demo
         SceneKind scene_ = SceneKind::Showcase;
         SceneKind pending_scene_ = SceneKind::Count; // Count = nothing pending
         float time_ = 0.0f;
+        float tour_time_ = 0.0f;
+        int tour_phase_ = -1;
 
         ECS::Entity camera_;
         ECS::Entity sun_;
