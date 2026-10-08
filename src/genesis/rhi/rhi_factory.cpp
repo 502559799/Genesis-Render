@@ -13,6 +13,9 @@
 #if GENESIS_RHI_VULKAN
 #include "rhi/vulkan/vk_backend.hpp"
 #endif
+#if GENESIS_RHI_METAL
+#include "rhi/metal/metal_backend.hpp"
+#endif
 
 namespace Genesis
 {
@@ -20,6 +23,20 @@ namespace Genesis
     {
         RHIDevice *RHIDevice::create(const DeviceDesc &desc)
         {
+#if GENESIS_RHI_METAL
+            if (desc.backend == BackendType::Metal)
+            {
+                MetalDeviceRHI *device = new MetalDeviceRHI();
+                if (!device->initialize(desc))
+                {
+                    GEN_LOG_ERROR("[RHI] Metal backend initialisation failed");
+                    device->shutdown();
+                    delete device;
+                    return nullptr;
+                }
+                return device;
+            }
+#endif
 #if GENESIS_RHI_VULKAN
             if (desc.backend == BackendType::Vulkan)
             {
@@ -55,6 +72,9 @@ namespace Genesis
         // Compile-time visibility of what is available.
         bool backendAvailable(BackendType type)
         {
+#if GENESIS_RHI_METAL
+            if (type == BackendType::Metal) return true;
+#endif
 #if GENESIS_RHI_VULKAN
             if (type == BackendType::Vulkan) return true;
 #endif

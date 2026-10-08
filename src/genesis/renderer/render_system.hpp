@@ -23,6 +23,7 @@
 #define __GENESIS_RENDER_SYSTEM_HPP__
 
 #include "ecs/components.hpp"
+#include "renderer/overlay_system.hpp"
 #include "renderer/render_scene.hpp"
 #include "renderer/render_ubo.hpp"
 #include "rhi/rhi.hpp"
@@ -104,9 +105,12 @@ namespace Genesis
             explicit RenderSystem(RHI::RHIDevice *device);
             ~RenderSystem() override;
 
-            bool initialize(uint32_t width, uint32_t height);
+            bool initialize(uint32_t width, uint32_t height, const std::string &ttf_path = "");
             void shutdown();
             void resize(uint32_t width, uint32_t height);
+
+            // Free command-list / programmable post / SDF text subsystem.
+            OverlaySystem &overlay() { return overlay_; }
 
             const char *name() const override { return "RenderSystem"; }
             int32_t order() const override { return 200; }
@@ -293,6 +297,10 @@ namespace Genesis
 
             PostPresentCallback post_present_callback_ = nullptr;
             void *post_present_user_ = nullptr;
+
+            // Free command-list + programmable post + SDF text.
+            OverlaySystem overlay_;
+            bool overlay_enabled_ = false;
 
             // Debug lines
             struct DebugVertex

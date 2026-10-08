@@ -1,8 +1,6 @@
 build/
+build_*/
 build-*/
-*.spv
+__MACOSX/
+.DS_Store
 imgui.ini
-__pycache__/
-*.pyc
-xcode-build/
-.codegraph/

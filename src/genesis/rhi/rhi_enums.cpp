@@ -13,6 +13,7 @@ namespace Genesis
             {
             case BackendType::OpenGL: return "OpenGL";
             case BackendType::Vulkan: return "Vulkan";
+            case BackendType::Metal: return "Metal";
             }
             return "Unknown";
         }

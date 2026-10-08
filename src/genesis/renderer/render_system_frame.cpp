@@ -437,6 +437,11 @@ namespace Genesis
             auto present_end = std::chrono::steady_clock::now();
             stats_.present_ms = std::chrono::duration<double, std::milli>(present_end - scene_end).count();
             ++stats_.frame_index;
+
+            // Clear the free command list for the next frame: scripts record
+            // commands during world.update (before this render), so they are
+            // consumed here and must not persist.
+            if (overlay_enabled_) overlay_.clearCommands();
         }
 
         void RenderSystem::renderScenePass(RHI::RHICommandBuffer *cmd, RHI::RHIRenderPass *pass,
@@ -534,6 +539,11 @@ namespace Genesis
             // ---- debug lines -------------------------------------------
             renderDebugLines(cmd);
 
+            // ---- free 3D command list (CommandBuffer draw commands) ----
+            // In the HDR pass, depth tested, so it composes with the scene.
+            if (overlay_enabled_)
+                overlay_.render3D(cmd, camera_.view_projection, hdr_target_.width, hdr_target_.height);
+
             cmd->endRenderPass();
         }
 
@@ -541,23 +551,9 @@ namespace Genesis
                                              RHI::RHIFramebuffer *fb, uint32_t width, uint32_t height, bool flip_uv)
         {
             if (!pass || !fb) return;
-            RHI::RHIPipeline *pipeline = presentPipeline(fb == device_->currentSwapchainFramebuffer()
-                                                             ? device_->swapchainFormat()
-                                                             : capture_target_.color_format);
-            if (!pipeline) return;
-
-            PostParamsUBO post;
-            post.a = GpuVec4(settings_.exposure, settings_.gamma, (float)settings_.tonemap_mode, flip_uv ? 1.0f : 0.0f);
-            post.b = GpuVec4(settings_.vignette, settings_.saturation, (float)stats_.frame_index * 0.016f, 0.0f);
-            device_->writeBuffer(post_ubo_, &post, sizeof(post), 0);
-
-            RHI::DescriptorBufferInfo buf{post_ubo_, 0, sizeof(PostParamsUBO)};
-            RHI::DescriptorImageInfo img{hdr_target_.color, scene_->textures().white().sampler,
-                                         RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1};
-            RHI::WriteDescriptorSet writes[2];
-            writes[0] = RHI::WriteDescriptorSet{0, 0, 1, RHI::ResourceType::UniformBuffer, &buf, nullptr};
-            writes[1] = RHI::WriteDescriptorSet{1, 0, 1, RHI::ResourceType::CombinedImageSampler, nullptr, &img};
-            post_set_->write(writes, 2);
+            RHI::PixelFormat fmt = (fb == device_->currentSwapchainFramebuffer())
+                                      ? device_->swapchainFormat()
+                                      : capture_target_.color_format;
 
             RHI::RenderPassBeginInfo begin;
             begin.clear_count = 1;
@@ -566,12 +562,50 @@ namespace Genesis
             cmd->beginRenderPass(pass, fb, begin);
             cmd->setViewport(RHI::Viewport{0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f});
             cmd->setScissor(RHI::Rect2D{0, 0, width, height});
-            cmd->bindPipeline(pipeline);
-            cmd->bindVertexBuffer(quad_vb_, 0);
-            RHI::RHIDescriptorSet *sets[1] = {post_set_};
-            cmd->bindDescriptorSets(pipeline, sets, 1, nullptr, 0);
-            cmd->draw(6, 0, 1, 0);
+
+            // Programmable post effect (CommandBuffer user pipeline): when the
+            // overlay system has an effect active it draws the tonemap + user
+            // effect itself, demonstrating a user-controlled render pipeline.
+            RHI::RHISampler *scene_sampler = scene_->textures().white().sampler;
+
+            bool used_effect = false;
+            if (overlay_enabled_)
+            {
+                used_effect = overlay_.presentEffect(cmd, fmt, hdr_target_.color, scene_sampler,
+                                                    quad_vb_, settings_.exposure, settings_.gamma,
+                                                    (int)settings_.tonemap_mode, settings_.saturation,
+                                                    flip_uv, (float)stats_.frame_index * 0.016f);
+            }
+
+            if (!used_effect)
+            {
+                RHI::RHIPipeline *pipeline = presentPipeline(fmt);
+                if (!pipeline) { cmd->endRenderPass(); return; }
+
+                PostParamsUBO post;
+                post.a = GpuVec4(settings_.exposure, settings_.gamma, (float)settings_.tonemap_mode, flip_uv ? 1.0f : 0.0f);
+                post.b = GpuVec4(settings_.vignette, settings_.saturation, (float)stats_.frame_index * 0.016f, 0.0f);
+                device_->writeBuffer(post_ubo_, &post, sizeof(post), 0);
+
+                RHI::DescriptorBufferInfo buf{post_ubo_, 0, sizeof(PostParamsUBO)};
+                RHI::DescriptorImageInfo img{hdr_target_.color, scene_sampler,
+                                             RHI::TextureLayout::ShaderReadOnlyOptimal, 0, 0, 1};
+                RHI::WriteDescriptorSet writes[2];
+                writes[0] = RHI::WriteDescriptorSet{0, 0, 1, RHI::ResourceType::UniformBuffer, &buf, nullptr};
+                writes[1] = RHI::WriteDescriptorSet{1, 0, 1, RHI::ResourceType::CombinedImageSampler, nullptr, &img};
+                post_set_->write(writes, 2);
+
+                cmd->bindPipeline(pipeline);
+                cmd->bindVertexBuffer(quad_vb_, 0);
+                RHI::RHIDescriptorSet *sets[1] = {post_set_};
+                cmd->bindDescriptorSets(pipeline, sets, 1, nullptr, 0);
+                cmd->draw(6, 0, 1, 0);
+            }
             ++stats_.draw_calls;
+
+            // ---- 2D free command list + SDF text (screen space) ----
+            if (overlay_enabled_)
+                overlay_.render2D(cmd, width, height, fmt);
 
             // UI / overlay hook: still inside the present pass.
             if (post_present_callback_) post_present_callback_(cmd, width, height, post_present_user_);

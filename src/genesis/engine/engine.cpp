@@ -69,7 +69,14 @@ namespace Genesis
         world_ = std::make_unique<ECS::World>("main");
 
         render_ = world_->scheduler().addSystem<Render::RenderSystem>(device_);
-        if (!render_->initialize(window_.drawableWidth(), window_.drawableHeight()))
+        // Resolve the SDF font: explicit path, or a default under the asset dir.
+        std::string font_path = config_.sdf_font_path;
+        if (font_path.empty())
+        {
+            std::string candidate = ResourceIO::joinPath(config_.asset_dir, "fonts/DejaVuSans.ttf");
+            if (ResourceIO::fileExists(candidate)) font_path = std::move(candidate);
+        }
+        if (!render_->initialize(window_.drawableWidth(), window_.drawableHeight(), font_path))
         {
             GEN_LOG_ERROR("[Engine] render system initialisation failed");
             return false;

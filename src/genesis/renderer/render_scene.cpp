@@ -549,6 +549,33 @@ namespace Genesis
             return updated;
         }
 
+        void RenderScene::setMaterialBaseColor(int32_t index, const Math::Color &color)
+        {
+            GpuMaterial *m = material(index);
+            if (!m) return;
+            m->ubo.base_color_factor = GpuVec4::from(color);
+            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+        }
+
+        void RenderScene::setMaterialPBR(int32_t index, float metallic, float roughness)
+        {
+            GpuMaterial *m = material(index);
+            if (!m) return;
+            GpuVec4 p = m->ubo.params0;
+            p.x = metallic;
+            p.y = roughness;
+            m->ubo.params0 = p;
+            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+        }
+
+        void RenderScene::setMaterialEmissive(int32_t index, const Math::Color &color, float strength)
+        {
+            GpuMaterial *m = material(index);
+            if (!m) return;
+            m->ubo.emissive_factor = GpuVec4(color.r, color.g, color.b, strength);
+            if (m->ubo_buffer) device_->writeBuffer(m->ubo_buffer, &m->ubo, sizeof(MaterialUBO), 0);
+        }
+
         std::vector<uint32_t> RenderScene::uploadModel(const ModelData &model, const std::string &name_hint)
         {
             std::vector<uint32_t> mesh_indices;

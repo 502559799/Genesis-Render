@@ -2937,6 +2937,414 @@ static const uint32_t ibl_prefilter_frag_spirv[] = {
 };
 static const size_t ibl_prefilter_frag_spirv_words = 2581;
 
+// ---- post/effects.frag (OpenGL 4.10 variant) ----
+static const char post_effects_frag_glsl[] =
+    "#version 410\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - programmable post processing.\n"
+    " *\n"
+    " * Same as the tonemap pass (exposure / tonemap / gamma) but with an extra\n"
+    " * user-controlled effect branch, demonstrating a programmable pipeline:\n"
+    " *   mode 0 = none (identical to tonemap), 1 = colour invert,\n"
+    " *   2 = scanlines, 3 = vignette boost.\n"
+    " *\n"
+    " * PostParams (set 0 binding 0):\n"
+    " *   u_post_a = (exposure, gamma, tonemap mode, flip uv.y)\n"
+    " *   u_post_b = (vignette, saturation, time, effect mode)\n"
+    " * Scene colour sampled from set 0 binding 1.\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for both backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL\n"
+    " * before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#ifdef GENESIS_VK\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "GS_UBO(0, 0, PostParams)\n"
+    "{\n"
+    "    vec4 u_post_a;\n"
+    "    vec4 u_post_b;\n"
+    "};\n"
+    "GS_TEX2D(0, 1, u_scene_color);\n"
+    "\n"
+    "GS_IN(0, vec2, v_uv);\n"
+    "GS_OUT(0, vec4, out_color);\n"
+    "\n"
+    "vec3 acesFilm(vec3 x)\n"
+    "{\n"
+    "    const float a = 2.51;\n"
+    "    const float b = 0.03;\n"
+    "    const float c = 2.43;\n"
+    "    const float d = 0.59;\n"
+    "    const float e = 0.14;\n"
+    "    return gsSaturate((x * (a * x + b)) / (x * (c * x + d) + e));\n"
+    "}\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    vec2 uv = v_uv;\n"
+    "    if (u_post_a.w > 0.5)\n"
+    "        uv.y = 1.0 - uv.y;\n"
+    "\n"
+    "    vec3 color = texture(u_scene_color, uv).rgb;\n"
+    "    color *= max(u_post_a.x, 0.0);\n"
+    "\n"
+    "    int tonemap_mode = int(u_post_a.z + 0.5);\n"
+    "    if (tonemap_mode == 1)\n"
+    "        color = color / (color + vec3(1.0));\n"
+    "    else if (tonemap_mode == 2)\n"
+    "        color = acesFilm(color);\n"
+    "    else\n"
+    "        color = gsSaturate(color);\n"
+    "\n"
+    "    // ---- programmable effect branch (u_post_b.w) -----------------------\n"
+    "    int effect = int(u_post_b.w + 0.5);\n"
+    "    if (effect == 1)\n"
+    "    {\n"
+    "        // Invert\n"
+    "        color = vec3(1.0) - color;\n"
+    "    }\n"
+    "    else if (effect == 2)\n"
+    "    {\n"
+    "        // Scanlines: darken every other ~2nd pixel row after gamma\n"
+    "        float row = floor(gl_FragCoord.y / 2.0);\n"
+    "        float darken = mod(row, 2.0) < 1.0 ? 0.75 : 1.0;\n"
+    "        color *= darken;\n"
+    "    }\n"
+    "    else if (effect == 3)\n"
+    "    {\n"
+    "        // Vignette boost\n"
+    "        vec2 d = v_uv - 0.5;\n"
+    "        color *= gsSaturate(1.0 - dot(d, d) * 1.6);\n"
+    "    }\n"
+    "\n"
+    "    // Saturation\n"
+    "    float sat = max(u_post_b.y, 0.0);\n"
+    "    if (abs(sat - 1.0) > 1e-4)\n"
+    "    {\n"
+    "        float luma = gsLuminance(color);\n"
+    "        color = mix(vec3(luma), color, sat);\n"
+    "    }\n"
+    "\n"
+    "    // Gamma encode\n"
+    "    float gamma = max(u_post_a.y, 0.1);\n"
+    "    color = pow(max(color, vec3(0.0)), vec3(1.0 / gamma));\n"
+    "\n"
+    "    out_color = vec4(gsSaturate(color), 1.0);\n"
+    "}\n"
+    "";
+static const size_t post_effects_frag_glsl_size = 8528;
+
+// ---- post/effects.frag (SPIR-V, Vulkan 1.1) ----
+static const uint32_t post_effects_frag_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000au, 0x000000ebu, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x0008000fu, 0x00000004u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000049u, 0x0000009eu, 0x000000e3u,
+    0x00030010u, 0x00000004u, 0x00000007u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u, 0x00000004u,
+    0x6e69616du, 0x00000000u, 0x00060005u, 0x0000000au, 0x61537367u, 0x61727574u, 0x66286574u, 0x00003b31u,
+    0x00030005u, 0x00000009u, 0x00000076u, 0x00060005u, 0x00000010u, 0x61537367u, 0x61727574u, 0x76286574u,
+    0x003b3366u, 0x00030005u, 0x0000000fu, 0x00000076u, 0x00070005u, 0x00000014u, 0x754c7367u, 0x616e696du,
+    0x2865636eu, 0x3b336676u, 0x00000000u, 0x00030005u, 0x00000013u, 0x00000063u, 0x00060005u, 0x00000017u,
+    0x73656361u, 0x6d6c6946u, 0x33667628u, 0x0000003bu, 0x00030005u, 0x00000016u, 0x00000078u, 0x00040005u,
+    0x00000041u, 0x61726170u, 0x0000006du, 0x00030005u, 0x00000047u, 0x00007675u, 0x00040005u, 0x00000049u,
+    0x76755f76u, 0x00000000u, 0x00050005u, 0x0000004cu, 0x74736f50u, 0x61726150u, 0x0000736du, 0x00060006u,
+    0x0000004cu, 0x00000000u, 0x6f705f75u, 0x615f7473u, 0x00000000u, 0x00060006u, 0x0000004cu, 0x00000001u,
+    0x6f705f75u, 0x625f7473u, 0x00000000u, 0x00030005u, 0x0000004eu, 0x00000000u, 0x00040005u, 0x00000060u,
+    0x6f6c6f63u, 0x00000072u, 0x00060005u, 0x00000064u, 0x63735f75u, 0x5f656e65u, 0x6f6c6f63u, 0x00000072u,
+    0x00060005u, 0x00000070u, 0x656e6f74u, 0x5f70616du, 0x65646f6du, 0x00000000u, 0x00040005u, 0x00000085u,
+    0x61726170u, 0x0000006du, 0x00040005u, 0x00000089u, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000008cu,
+    0x65666665u, 0x00007463u, 0x00030005u, 0x0000009cu, 0x00776f72u, 0x00060005u, 0x0000009eu, 0x465f6c67u,
+    0x43676172u, 0x64726f6fu, 0x00000000u, 0x00040005u, 0x000000a5u, 0x6b726164u, 0x00006e65u, 0x00030005u,
+    0x000000b4u, 0x00000064u, 0x00040005u, 0x000000beu, 0x61726170u, 0x0000006du, 0x00030005u, 0x000000c2u,
+    0x00746173u, 0x00040005u, 0x000000cdu, 0x616d756cu, 0x00000000u, 0x00040005u, 0x000000ceu, 0x61726170u,
+    0x0000006du, 0x00040005u, 0x000000d7u, 0x6d6d6167u, 0x00000061u, 0x00050005u, 0x000000e3u, 0x5f74756fu,
+    0x6f6c6f63u, 0x00000072u, 0x00040005u, 0x000000e4u, 0x61726170u, 0x0000006du, 0x00040047u, 0x00000049u,
+    0x0000001eu, 0x00000000u, 0x00050048u, 0x0000004cu, 0x00000000u, 0x00000023u, 0x00000000u, 0x00050048u,
+    0x0000004cu, 0x00000001u, 0x00000023u, 0x00000010u, 0x00030047u, 0x0000004cu, 0x00000002u, 0x00040047u,
+    0x0000004eu, 0x00000022u, 0x00000000u, 0x00040047u, 0x0000004eu, 0x00000021u, 0x00000000u, 0x00040047u,
+    0x00000064u, 0x00000022u, 0x00000000u, 0x00040047u, 0x00000064u, 0x00000021u, 0x00000001u, 0x00040047u,
+    0x0000009eu, 0x0000000bu, 0x0000000fu, 0x00040047u, 0x000000e3u, 0x0000001eu, 0x00000000u, 0x00020013u,
+    0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040020u,
+    0x00000007u, 0x00000007u, 0x00000006u, 0x00040021u, 0x00000008u, 0x00000006u, 0x00000007u, 0x00040017u,
+    0x0000000cu, 0x00000006u, 0x00000003u, 0x00040020u, 0x0000000du, 0x00000007u, 0x0000000cu, 0x00040021u,
+    0x0000000eu, 0x0000000cu, 0x0000000du, 0x00040021u, 0x00000012u, 0x00000006u, 0x0000000du, 0x0004002bu,
+    0x00000006u, 0x0000001au, 0x00000000u, 0x0004002bu, 0x00000006u, 0x0000001bu, 0x3f800000u, 0x0006002cu,
+    0x0000000cu, 0x00000020u, 0x0000001au, 0x0000001au, 0x0000001au, 0x0006002cu, 0x0000000cu, 0x00000021u,
+    0x0000001bu, 0x0000001bu, 0x0000001bu, 0x0004002bu, 0x00000006u, 0x00000026u, 0x3e59b3d0u, 0x0004002bu,
+    0x00000006u, 0x00000027u, 0x3f371759u, 0x0004002bu, 0x00000006u, 0x00000028u, 0x3d93dd98u, 0x0006002cu,
+    0x0000000cu, 0x00000029u, 0x00000026u, 0x00000027u, 0x00000028u, 0x0004002bu, 0x00000006u, 0x0000002eu,
+    0x4020a3d7u, 0x0004002bu, 0x00000006u, 0x00000031u, 0x3cf5c28fu, 0x0004002bu, 0x00000006u, 0x00000036u,
+    0x401b851fu, 0x0004002bu, 0x00000006u, 0x00000039u, 0x3f170a3du, 0x0004002bu, 0x00000006u, 0x0000003du,
+    0x3e0f5c29u, 0x00040017u, 0x00000045u, 0x00000006u, 0x00000002u, 0x00040020u, 0x00000046u, 0x00000007u,
+    0x00000045u, 0x00040020u, 0x00000048u, 0x00000001u, 0x00000045u, 0x0004003bu, 0x00000048u, 0x00000049u,
+    0x00000001u, 0x00040017u, 0x0000004bu, 0x00000006u, 0x00000004u, 0x0004001eu, 0x0000004cu, 0x0000004bu,
+    0x0000004bu, 0x00040020u, 0x0000004du, 0x00000002u, 0x0000004cu, 0x0004003bu, 0x0000004du, 0x0000004eu,
+    0x00000002u, 0x00040015u, 0x0000004fu, 0x00000020u, 0x00000001u, 0x0004002bu, 0x0000004fu, 0x00000050u,
+    0x00000000u, 0x00040015u, 0x00000051u, 0x00000020u, 0x00000000u, 0x0004002bu, 0x00000051u, 0x00000052u,
+    0x00000003u, 0x00040020u, 0x00000053u, 0x00000002u, 0x00000006u, 0x0004002bu, 0x00000006u, 0x00000056u,
+    0x3f000000u, 0x00020014u, 0x00000057u, 0x0004002bu, 0x00000051u, 0x0000005bu, 0x00000001u, 0x00090019u,
+    0x00000061u, 0x00000006u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u,
+    0x0003001bu, 0x00000062u, 0x00000061u, 0x00040020u, 0x00000063u, 0x00000000u, 0x00000062u, 0x0004003bu,
+    0x00000063u, 0x00000064u, 0x00000000u, 0x0004002bu, 0x00000051u, 0x00000069u, 0x00000000u, 0x00040020u,
+    0x0000006fu, 0x00000007u, 0x0000004fu, 0x0004002bu, 0x00000051u, 0x00000071u, 0x00000002u, 0x0004002bu,
+    0x0000004fu, 0x00000077u, 0x00000001u, 0x0004002bu, 0x0000004fu, 0x00000081u, 0x00000002u, 0x00040020u,
+    0x0000009du, 0x00000001u, 0x0000004bu, 0x0004003bu, 0x0000009du, 0x0000009eu, 0x00000001u, 0x00040020u,
+    0x0000009fu, 0x00000001u, 0x00000006u, 0x0004002bu, 0x00000006u, 0x000000a2u, 0x40000000u, 0x0004002bu,
+    0x00000006u, 0x000000a9u, 0x3f400000u, 0x0004002bu, 0x0000004fu, 0x000000b0u, 0x00000003u, 0x0004002bu,
+    0x00000006u, 0x000000bbu, 0x3fcccccdu, 0x0004002bu, 0x00000006u, 0x000000c9u, 0x38d1b717u, 0x0004002bu,
+    0x00000006u, 0x000000dau, 0x3dcccccdu, 0x00040020u, 0x000000e2u, 0x00000003u, 0x0000004bu, 0x0004003bu,
+    0x000000e2u, 0x000000e3u, 0x00000003u, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u,
+    0x000200f8u, 0x00000005u, 0x0004003bu, 0x00000046u, 0x00000047u, 0x00000007u, 0x0004003bu, 0x0000000du,
+    0x00000060u, 0x00000007u, 0x0004003bu, 0x0000006fu, 0x00000070u, 0x00000007u, 0x0004003bu, 0x0000000du,
+    0x00000085u, 0x00000007u, 0x0004003bu, 0x0000000du, 0x00000089u, 0x00000007u, 0x0004003bu, 0x0000006fu,
+    0x0000008cu, 0x00000007u, 0x0004003bu, 0x00000007u, 0x0000009cu, 0x00000007u, 0x0004003bu, 0x00000007u,
+    0x000000a5u, 0x00000007u, 0x0004003bu, 0x00000046u, 0x000000b4u, 0x00000007u, 0x0004003bu, 0x00000007u,
+    0x000000beu, 0x00000007u, 0x0004003bu, 0x00000007u, 0x000000c2u, 0x00000007u, 0x0004003bu, 0x00000007u,
+    0x000000cdu, 0x00000007u, 0x0004003bu, 0x0000000du, 0x000000ceu, 0x00000007u, 0x0004003bu, 0x00000007u,
+    0x000000d7u, 0x00000007u, 0x0004003bu, 0x0000000du, 0x000000e4u, 0x00000007u, 0x0004003du, 0x00000045u,
+    0x0000004au, 0x00000049u, 0x0003003eu, 0x00000047u, 0x0000004au, 0x00060041u, 0x00000053u, 0x00000054u,
+    0x0000004eu, 0x00000050u, 0x00000052u, 0x0004003du, 0x00000006u, 0x00000055u, 0x00000054u, 0x000500bau,
+    0x00000057u, 0x00000058u, 0x00000055u, 0x00000056u, 0x000300f7u, 0x0000005au, 0x00000000u, 0x000400fau,
+    0x00000058u, 0x00000059u, 0x0000005au, 0x000200f8u, 0x00000059u, 0x00050041u, 0x00000007u, 0x0000005cu,
+    0x00000047u, 0x0000005bu, 0x0004003du, 0x00000006u, 0x0000005du, 0x0000005cu, 0x00050083u, 0x00000006u,
+    0x0000005eu, 0x0000001bu, 0x0000005du, 0x00050041u, 0x00000007u, 0x0000005fu, 0x00000047u, 0x0000005bu,
+    0x0003003eu, 0x0000005fu, 0x0000005eu, 0x000200f9u, 0x0000005au, 0x000200f8u, 0x0000005au, 0x0004003du,
+    0x00000062u, 0x00000065u, 0x00000064u, 0x0004003du, 0x00000045u, 0x00000066u, 0x00000047u, 0x00050057u,
+    0x0000004bu, 0x00000067u, 0x00000065u, 0x00000066u, 0x0008004fu, 0x0000000cu, 0x00000068u, 0x00000067u,
+    0x00000067u, 0x00000000u, 0x00000001u, 0x00000002u, 0x0003003eu, 0x00000060u, 0x00000068u, 0x00060041u,
+    0x00000053u, 0x0000006au, 0x0000004eu, 0x00000050u, 0x00000069u, 0x0004003du, 0x00000006u, 0x0000006bu,
+    0x0000006au, 0x0007000cu, 0x00000006u, 0x0000006cu, 0x00000001u, 0x00000028u, 0x0000006bu, 0x0000001au,
+    0x0004003du, 0x0000000cu, 0x0000006du, 0x00000060u, 0x0005008eu, 0x0000000cu, 0x0000006eu, 0x0000006du,
+    0x0000006cu, 0x0003003eu, 0x00000060u, 0x0000006eu, 0x00060041u, 0x00000053u, 0x00000072u, 0x0000004eu,
+    0x00000050u, 0x00000071u, 0x0004003du, 0x00000006u, 0x00000073u, 0x00000072u, 0x00050081u, 0x00000006u,
+    0x00000074u, 0x00000073u, 0x00000056u, 0x0004006eu, 0x0000004fu, 0x00000075u, 0x00000074u, 0x0003003eu,
+    0x00000070u, 0x00000075u, 0x0004003du, 0x0000004fu, 0x00000076u, 0x00000070u, 0x000500aau, 0x00000057u,
+    0x00000078u, 0x00000076u, 0x00000077u, 0x000300f7u, 0x0000007au, 0x00000000u, 0x000400fau, 0x00000078u,
+    0x00000079u, 0x0000007fu, 0x000200f8u, 0x00000079u, 0x0004003du, 0x0000000cu, 0x0000007bu, 0x00000060u,
+    0x0004003du, 0x0000000cu, 0x0000007cu, 0x00000060u, 0x00050081u, 0x0000000cu, 0x0000007du, 0x0000007cu,
+    0x00000021u, 0x00050088u, 0x0000000cu, 0x0000007eu, 0x0000007bu, 0x0000007du, 0x0003003eu, 0x00000060u,
+    0x0000007eu, 0x000200f9u, 0x0000007au, 0x000200f8u, 0x0000007fu, 0x0004003du, 0x0000004fu, 0x00000080u,
+    0x00000070u, 0x000500aau, 0x00000057u, 0x00000082u, 0x00000080u, 0x00000081u, 0x000300f7u, 0x00000084u,
+    0x00000000u, 0x000400fau, 0x00000082u, 0x00000083u, 0x00000088u, 0x000200f8u, 0x00000083u, 0x0004003du,
+    0x0000000cu, 0x00000086u, 0x00000060u, 0x0003003eu, 0x00000085u, 0x00000086u, 0x00050039u, 0x0000000cu,
+    0x00000087u, 0x00000017u, 0x00000085u, 0x0003003eu, 0x00000060u, 0x00000087u, 0x000200f9u, 0x00000084u,
+    0x000200f8u, 0x00000088u, 0x0004003du, 0x0000000cu, 0x0000008au, 0x00000060u, 0x0003003eu, 0x00000089u,
+    0x0000008au, 0x00050039u, 0x0000000cu, 0x0000008bu, 0x00000010u, 0x00000089u, 0x0003003eu, 0x00000060u,
+    0x0000008bu, 0x000200f9u, 0x00000084u, 0x000200f8u, 0x00000084u, 0x000200f9u, 0x0000007au, 0x000200f8u,
+    0x0000007au, 0x00060041u, 0x00000053u, 0x0000008du, 0x0000004eu, 0x00000077u, 0x00000052u, 0x0004003du,
+    0x00000006u, 0x0000008eu, 0x0000008du, 0x00050081u, 0x00000006u, 0x0000008fu, 0x0000008eu, 0x00000056u,
+    0x0004006eu, 0x0000004fu, 0x00000090u, 0x0000008fu, 0x0003003eu, 0x0000008cu, 0x00000090u, 0x0004003du,
+    0x0000004fu, 0x00000091u, 0x0000008cu, 0x000500aau, 0x00000057u, 0x00000092u, 0x00000091u, 0x00000077u,
+    0x000300f7u, 0x00000094u, 0x00000000u, 0x000400fau, 0x00000092u, 0x00000093u, 0x00000097u, 0x000200f8u,
+    0x00000093u, 0x0004003du, 0x0000000cu, 0x00000095u, 0x00000060u, 0x00050083u, 0x0000000cu, 0x00000096u,
+    0x00000021u, 0x00000095u, 0x0003003eu, 0x00000060u, 0x00000096u, 0x000200f9u, 0x00000094u, 0x000200f8u,
+    0x00000097u, 0x0004003du, 0x0000004fu, 0x00000098u, 0x0000008cu, 0x000500aau, 0x00000057u, 0x00000099u,
+    0x00000098u, 0x00000081u, 0x000300f7u, 0x0000009bu, 0x00000000u, 0x000400fau, 0x00000099u, 0x0000009au,
+    0x000000aeu, 0x000200f8u, 0x0000009au, 0x00050041u, 0x0000009fu, 0x000000a0u, 0x0000009eu, 0x0000005bu,
+    0x0004003du, 0x00000006u, 0x000000a1u, 0x000000a0u, 0x00050088u, 0x00000006u, 0x000000a3u, 0x000000a1u,
+    0x000000a2u, 0x0006000cu, 0x00000006u, 0x000000a4u, 0x00000001u, 0x00000008u, 0x000000a3u, 0x0003003eu,
+    0x0000009cu, 0x000000a4u, 0x0004003du, 0x00000006u, 0x000000a6u, 0x0000009cu, 0x0005008du, 0x00000006u,
+    0x000000a7u, 0x000000a6u, 0x000000a2u, 0x000500b8u, 0x00000057u, 0x000000a8u, 0x000000a7u, 0x0000001bu,
+    0x000600a9u, 0x00000006u, 0x000000aau, 0x000000a8u, 0x000000a9u, 0x0000001bu, 0x0003003eu, 0x000000a5u,
+    0x000000aau, 0x0004003du, 0x00000006u, 0x000000abu, 0x000000a5u, 0x0004003du, 0x0000000cu, 0x000000acu,
+    0x00000060u, 0x0005008eu, 0x0000000cu, 0x000000adu, 0x000000acu, 0x000000abu, 0x0003003eu, 0x00000060u,
+    0x000000adu, 0x000200f9u, 0x0000009bu, 0x000200f8u, 0x000000aeu, 0x0004003du, 0x0000004fu, 0x000000afu,
+    0x0000008cu, 0x000500aau, 0x00000057u, 0x000000b1u, 0x000000afu, 0x000000b0u, 0x000300f7u, 0x000000b3u,
+    0x00000000u, 0x000400fau, 0x000000b1u, 0x000000b2u, 0x000000b3u, 0x000200f8u, 0x000000b2u, 0x0004003du,
+    0x00000045u, 0x000000b5u, 0x00000049u, 0x00050050u, 0x00000045u, 0x000000b6u, 0x00000056u, 0x00000056u,
+    0x00050083u, 0x00000045u, 0x000000b7u, 0x000000b5u, 0x000000b6u, 0x0003003eu, 0x000000b4u, 0x000000b7u,
+    0x0004003du, 0x00000045u, 0x000000b8u, 0x000000b4u, 0x0004003du, 0x00000045u, 0x000000b9u, 0x000000b4u,
+    0x00050094u, 0x00000006u, 0x000000bau, 0x000000b8u, 0x000000b9u, 0x00050085u, 0x00000006u, 0x000000bcu,
+    0x000000bau, 0x000000bbu, 0x00050083u, 0x00000006u, 0x000000bdu, 0x0000001bu, 0x000000bcu, 0x0003003eu,
+    0x000000beu, 0x000000bdu, 0x00050039u, 0x00000006u, 0x000000bfu, 0x0000000au, 0x000000beu, 0x0004003du,
+    0x0000000cu, 0x000000c0u, 0x00000060u, 0x0005008eu, 0x0000000cu, 0x000000c1u, 0x000000c0u, 0x000000bfu,
+    0x0003003eu, 0x00000060u, 0x000000c1u, 0x000200f9u, 0x000000b3u, 0x000200f8u, 0x000000b3u, 0x000200f9u,
+    0x0000009bu, 0x000200f8u, 0x0000009bu, 0x000200f9u, 0x00000094u, 0x000200f8u, 0x00000094u, 0x00060041u,
+    0x00000053u, 0x000000c3u, 0x0000004eu, 0x00000077u, 0x0000005bu, 0x0004003du, 0x00000006u, 0x000000c4u,
+    0x000000c3u, 0x0007000cu, 0x00000006u, 0x000000c5u, 0x00000001u, 0x00000028u, 0x000000c4u, 0x0000001au,
+    0x0003003eu, 0x000000c2u, 0x000000c5u, 0x0004003du, 0x00000006u, 0x000000c6u, 0x000000c2u, 0x00050083u,
+    0x00000006u, 0x000000c7u, 0x000000c6u, 0x0000001bu, 0x0006000cu, 0x00000006u, 0x000000c8u, 0x00000001u,
+    0x00000004u, 0x000000c7u, 0x000500bau, 0x00000057u, 0x000000cau, 0x000000c8u, 0x000000c9u, 0x000300f7u,
+    0x000000ccu, 0x00000000u, 0x000400fau, 0x000000cau, 0x000000cbu, 0x000000ccu, 0x000200f8u, 0x000000cbu,
+    0x0004003du, 0x0000000cu, 0x000000cfu, 0x00000060u, 0x0003003eu, 0x000000ceu, 0x000000cfu, 0x00050039u,
+    0x00000006u, 0x000000d0u, 0x00000014u, 0x000000ceu, 0x0003003eu, 0x000000cdu, 0x000000d0u, 0x0004003du,
+    0x00000006u, 0x000000d1u, 0x000000cdu, 0x00060050u, 0x0000000cu, 0x000000d2u, 0x000000d1u, 0x000000d1u,
+    0x000000d1u, 0x0004003du, 0x0000000cu, 0x000000d3u, 0x00000060u, 0x0004003du, 0x00000006u, 0x000000d4u,
+    0x000000c2u, 0x00060050u, 0x0000000cu, 0x000000d5u, 0x000000d4u, 0x000000d4u, 0x000000d4u, 0x0008000cu,
+    0x0000000cu, 0x000000d6u, 0x00000001u, 0x0000002eu, 0x000000d2u, 0x000000d3u, 0x000000d5u, 0x0003003eu,
+    0x00000060u, 0x000000d6u, 0x000200f9u, 0x000000ccu, 0x000200f8u, 0x000000ccu, 0x00060041u, 0x00000053u,
+    0x000000d8u, 0x0000004eu, 0x00000050u, 0x0000005bu, 0x0004003du, 0x00000006u, 0x000000d9u, 0x000000d8u,
+    0x0007000cu, 0x00000006u, 0x000000dbu, 0x00000001u, 0x00000028u, 0x000000d9u, 0x000000dau, 0x0003003eu,
+    0x000000d7u, 0x000000dbu, 0x0004003du, 0x0000000cu, 0x000000dcu, 0x00000060u, 0x0007000cu, 0x0000000cu,
+    0x000000ddu, 0x00000001u, 0x00000028u, 0x000000dcu, 0x00000020u, 0x0004003du, 0x00000006u, 0x000000deu,
+    0x000000d7u, 0x00050088u, 0x00000006u, 0x000000dfu, 0x0000001bu, 0x000000deu, 0x00060050u, 0x0000000cu,
+    0x000000e0u, 0x000000dfu, 0x000000dfu, 0x000000dfu, 0x0007000cu, 0x0000000cu, 0x000000e1u, 0x00000001u,
+    0x0000001au, 0x000000ddu, 0x000000e0u, 0x0003003eu, 0x00000060u, 0x000000e1u, 0x0004003du, 0x0000000cu,
+    0x000000e5u, 0x00000060u, 0x0003003eu, 0x000000e4u, 0x000000e5u, 0x00050039u, 0x0000000cu, 0x000000e6u,
+    0x00000010u, 0x000000e4u, 0x00050051u, 0x00000006u, 0x000000e7u, 0x000000e6u, 0x00000000u, 0x00050051u,
+    0x00000006u, 0x000000e8u, 0x000000e6u, 0x00000001u, 0x00050051u, 0x00000006u, 0x000000e9u, 0x000000e6u,
+    0x00000002u, 0x00070050u, 0x0000004bu, 0x000000eau, 0x000000e7u, 0x000000e8u, 0x000000e9u, 0x0000001bu,
+    0x0003003eu, 0x000000e3u, 0x000000eau, 0x000100fdu, 0x00010038u, 0x00050036u, 0x00000006u, 0x0000000au,
+    0x00000000u, 0x00000008u, 0x00030037u, 0x00000007u, 0x00000009u, 0x000200f8u, 0x0000000bu, 0x0004003du,
+    0x00000006u, 0x00000019u, 0x00000009u, 0x0008000cu, 0x00000006u, 0x0000001cu, 0x00000001u, 0x0000002bu,
+    0x00000019u, 0x0000001au, 0x0000001bu, 0x000200feu, 0x0000001cu, 0x00010038u, 0x00050036u, 0x0000000cu,
+    0x00000010u, 0x00000000u, 0x0000000eu, 0x00030037u, 0x0000000du, 0x0000000fu, 0x000200f8u, 0x00000011u,
+    0x0004003du, 0x0000000cu, 0x0000001fu, 0x0000000fu, 0x0008000cu, 0x0000000cu, 0x00000022u, 0x00000001u,
+    0x0000002bu, 0x0000001fu, 0x00000020u, 0x00000021u, 0x000200feu, 0x00000022u, 0x00010038u, 0x00050036u,
+    0x00000006u, 0x00000014u, 0x00000000u, 0x00000012u, 0x00030037u, 0x0000000du, 0x00000013u, 0x000200f8u,
+    0x00000015u, 0x0004003du, 0x0000000cu, 0x00000025u, 0x00000013u, 0x00050094u, 0x00000006u, 0x0000002au,
+    0x00000025u, 0x00000029u, 0x000200feu, 0x0000002au, 0x00010038u, 0x00050036u, 0x0000000cu, 0x00000017u,
+    0x00000000u, 0x0000000eu, 0x00030037u, 0x0000000du, 0x00000016u, 0x000200f8u, 0x00000018u, 0x0004003bu,
+    0x0000000du, 0x00000041u, 0x00000007u, 0x0004003du, 0x0000000cu, 0x0000002du, 0x00000016u, 0x0004003du,
+    0x0000000cu, 0x0000002fu, 0x00000016u, 0x0005008eu, 0x0000000cu, 0x00000030u, 0x0000002fu, 0x0000002eu,
+    0x00060050u, 0x0000000cu, 0x00000032u, 0x00000031u, 0x00000031u, 0x00000031u, 0x00050081u, 0x0000000cu,
+    0x00000033u, 0x00000030u, 0x00000032u, 0x00050085u, 0x0000000cu, 0x00000034u, 0x0000002du, 0x00000033u,
+    0x0004003du, 0x0000000cu, 0x00000035u, 0x00000016u, 0x0004003du, 0x0000000cu, 0x00000037u, 0x00000016u,
+    0x0005008eu, 0x0000000cu, 0x00000038u, 0x00000037u, 0x00000036u, 0x00060050u, 0x0000000cu, 0x0000003au,
+    0x00000039u, 0x00000039u, 0x00000039u, 0x00050081u, 0x0000000cu, 0x0000003bu, 0x00000038u, 0x0000003au,
+    0x00050085u, 0x0000000cu, 0x0000003cu, 0x00000035u, 0x0000003bu, 0x00060050u, 0x0000000cu, 0x0000003eu,
+    0x0000003du, 0x0000003du, 0x0000003du, 0x00050081u, 0x0000000cu, 0x0000003fu, 0x0000003cu, 0x0000003eu,
+    0x00050088u, 0x0000000cu, 0x00000040u, 0x00000034u, 0x0000003fu, 0x0003003eu, 0x00000041u, 0x00000040u,
+    0x00050039u, 0x0000000cu, 0x00000042u, 0x00000010u, 0x00000041u, 0x000200feu, 0x00000042u, 0x00010038u,
+};
+static const size_t post_effects_frag_spirv_words = 1352;
+
 // ---- post/tonemap.frag (OpenGL 4.10 variant) ----
 static const char post_tonemap_frag_glsl[] =
     "#version 410\n"
@@ -6297,10 +6705,11 @@ static const char scene_skybox_frag_glsl[] =
     "GS_OUT(0, vec4, out_color);\n"
     "\n"
     "// Skybox specific bindings (this pipeline uses its own small layout):\n"
-    "//   set 0 binding 1 : sampler2D  u_sky_equirect\n"
-    "//   set 0 binding 2 : samplerCube u_sky_cube\n"
-    "GS_TEX2D(0, 1, u_sky_equirect);\n"
-    "GS_TEXCUBE(0, 2, u_sky_cube);\n"
+    "//   set 0 : PerFrame UBO (b0) and Environment UBO (b2) only\n"
+    "//   set 1 binding 0 : sampler2D  u_sky_equirect\n"
+    "//   set 1 binding 1 : samplerCube u_sky_cube\n"
+    "GS_TEX2D(1, 0, u_sky_equirect);\n"
+    "GS_TEXCUBE(1, 1, u_sky_cube);\n"
     "\n"
     "void main()\n"
     "{\n"
@@ -6341,7 +6750,7 @@ static const char scene_skybox_frag_glsl[] =
     "    gl_FragDepth = 1.0;\n"
     "}\n"
     "";
-static const size_t scene_skybox_frag_glsl_size = 21291;
+static const size_t scene_skybox_frag_glsl_size = 21352;
 
 // ---- scene/skybox.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_skybox_frag_spirv[] = {
@@ -6412,9 +6821,9 @@ static const uint32_t scene_skybox_frag_spirv[] = {
     0x00000000u, 0x00050048u, 0x0000006bu, 0x00000001u, 0x00000023u, 0x00000010u, 0x00050048u, 0x0000006bu,
     0x00000002u, 0x00000023u, 0x00000020u, 0x00050048u, 0x0000006bu, 0x00000003u, 0x00000023u, 0x00000030u,
     0x00030047u, 0x0000006bu, 0x00000002u, 0x00040047u, 0x0000006du, 0x00000022u, 0x00000000u, 0x00040047u,
-    0x0000006du, 0x00000021u, 0x00000002u, 0x00040047u, 0x000000a2u, 0x00000022u, 0x00000000u, 0x00040047u,
-    0x000000a2u, 0x00000021u, 0x00000001u, 0x00040047u, 0x000000b0u, 0x00000022u, 0x00000000u, 0x00040047u,
-    0x000000b0u, 0x00000021u, 0x00000002u, 0x00040047u, 0x000000edu, 0x0000001eu, 0x00000000u, 0x00040047u,
+    0x0000006du, 0x00000021u, 0x00000002u, 0x00040047u, 0x000000a2u, 0x00000022u, 0x00000001u, 0x00040047u,
+    0x000000a2u, 0x00000021u, 0x00000000u, 0x00040047u, 0x000000b0u, 0x00000022u, 0x00000001u, 0x00040047u,
+    0x000000b0u, 0x00000021u, 0x00000001u, 0x00040047u, 0x000000edu, 0x0000001eu, 0x00000000u, 0x00040047u,
     0x000000f9u, 0x0000000bu, 0x00000016u, 0x00050048u, 0x000000fau, 0x00000000u, 0x00000023u, 0x00000000u,
     0x00050048u, 0x000000fau, 0x00000001u, 0x00000023u, 0x00000010u, 0x00050048u, 0x000000fau, 0x00000002u,
     0x00000023u, 0x00000020u, 0x00050048u, 0x000000fau, 0x00000003u, 0x00000023u, 0x00000030u, 0x00040047u,
@@ -7365,12 +7774,956 @@ static const uint32_t scene_unlit_mesh_vert_spirv[] = {
 };
 static const size_t scene_unlit_mesh_vert_spirv_words = 1030;
 
+// ---- ui/text_glyph.frag (OpenGL 4.10 variant) ----
+static const char ui_text_glyph_frag_glsl[] =
+    "#version 410\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - SDF text fragment shader.\n"
+    " *\n"
+    " * The glyph atlas stores a signed-distance field: channel R carries the\n"
+    " * normalized distance, with 0.5 at the glyph edge (inside = >0.5,\n"
+    " * outside = <0.5).  A single `smoothstep` around 0.5 gives crisp,\n"
+    " * resolution-independent anti-aliased edges.  v_sdf.y is the edge half\n"
+    " * width in atlas-uv units (controls sharpness; small values are crisp).\n"
+    " *\n"
+    " * set 0 / binding 1 : sampler2D u_glyph_atlas\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for both backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL\n"
+    " * before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#ifdef GENESIS_VK\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "GS_TEX2D(0, 1, u_glyph_atlas);\n"
+    "\n"
+    "GS_IN(0, vec2, v_uv);\n"
+    "GS_IN(1, vec4, v_color);\n"
+    "GS_IN(2, vec2, v_sdf);\n"
+    "\n"
+    "GS_OUT(0, vec4, out_color);\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    float d = texture(u_glyph_atlas, v_uv).r;\n"
+    "    float soft = max(v_sdf.y, 0.001);\n"
+    "    float alpha = smoothstep(0.5 - soft, 0.5 + soft, d);\n"
+    "    if (alpha < 0.004) discard;\n"
+    "    out_color = vec4(v_color.rgb, v_color.a * alpha);\n"
+    "}\n"
+    "";
+static const size_t ui_text_glyph_frag_glsl_size = 7138;
+
+// ---- ui/text_glyph.frag (SPIR-V, Vulkan 1.1) ----
+static const uint32_t ui_text_glyph_frag_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000au, 0x0000003eu, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x0009000fu, 0x00000004u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000010u, 0x00000018u, 0x0000002fu,
+    0x00000031u, 0x00030010u, 0x00000004u, 0x00000007u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u,
+    0x00000004u, 0x6e69616du, 0x00000000u, 0x00030005u, 0x00000008u, 0x00000064u, 0x00060005u, 0x0000000cu,
+    0x6c675f75u, 0x5f687079u, 0x616c7461u, 0x00000073u, 0x00040005u, 0x00000010u, 0x76755f76u, 0x00000000u,
+    0x00040005u, 0x00000017u, 0x74666f73u, 0x00000000u, 0x00040005u, 0x00000018u, 0x64735f76u, 0x00000066u,
+    0x00040005u, 0x0000001fu, 0x68706c61u, 0x00000061u, 0x00050005u, 0x0000002fu, 0x5f74756fu, 0x6f6c6f63u,
+    0x00000072u, 0x00040005u, 0x00000031u, 0x6f635f76u, 0x00726f6cu, 0x00040047u, 0x0000000cu, 0x00000022u,
+    0x00000000u, 0x00040047u, 0x0000000cu, 0x00000021u, 0x00000001u, 0x00040047u, 0x00000010u, 0x0000001eu,
+    0x00000000u, 0x00040047u, 0x00000018u, 0x0000001eu, 0x00000002u, 0x00040047u, 0x0000002fu, 0x0000001eu,
+    0x00000000u, 0x00040047u, 0x00000031u, 0x0000001eu, 0x00000001u, 0x00020013u, 0x00000002u, 0x00030021u,
+    0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040020u, 0x00000007u, 0x00000007u,
+    0x00000006u, 0x00090019u, 0x00000009u, 0x00000006u, 0x00000001u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000001u, 0x00000000u, 0x0003001bu, 0x0000000au, 0x00000009u, 0x00040020u, 0x0000000bu, 0x00000000u,
+    0x0000000au, 0x0004003bu, 0x0000000bu, 0x0000000cu, 0x00000000u, 0x00040017u, 0x0000000eu, 0x00000006u,
+    0x00000002u, 0x00040020u, 0x0000000fu, 0x00000001u, 0x0000000eu, 0x0004003bu, 0x0000000fu, 0x00000010u,
+    0x00000001u, 0x00040017u, 0x00000012u, 0x00000006u, 0x00000004u, 0x00040015u, 0x00000014u, 0x00000020u,
+    0x00000000u, 0x0004002bu, 0x00000014u, 0x00000015u, 0x00000000u, 0x0004003bu, 0x0000000fu, 0x00000018u,
+    0x00000001u, 0x0004002bu, 0x00000014u, 0x00000019u, 0x00000001u, 0x00040020u, 0x0000001au, 0x00000001u,
+    0x00000006u, 0x0004002bu, 0x00000006u, 0x0000001du, 0x3a83126fu, 0x0004002bu, 0x00000006u, 0x00000020u,
+    0x3f000000u, 0x0004002bu, 0x00000006u, 0x00000028u, 0x3b83126fu, 0x00020014u, 0x00000029u, 0x00040020u,
+    0x0000002eu, 0x00000003u, 0x00000012u, 0x0004003bu, 0x0000002eu, 0x0000002fu, 0x00000003u, 0x00040020u,
+    0x00000030u, 0x00000001u, 0x00000012u, 0x0004003bu, 0x00000030u, 0x00000031u, 0x00000001u, 0x00040017u,
+    0x00000032u, 0x00000006u, 0x00000003u, 0x0004002bu, 0x00000014u, 0x00000035u, 0x00000003u, 0x00050036u,
+    0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003bu, 0x00000007u,
+    0x00000008u, 0x00000007u, 0x0004003bu, 0x00000007u, 0x00000017u, 0x00000007u, 0x0004003bu, 0x00000007u,
+    0x0000001fu, 0x00000007u, 0x0004003du, 0x0000000au, 0x0000000du, 0x0000000cu, 0x0004003du, 0x0000000eu,
+    0x00000011u, 0x00000010u, 0x00050057u, 0x00000012u, 0x00000013u, 0x0000000du, 0x00000011u, 0x00050051u,
+    0x00000006u, 0x00000016u, 0x00000013u, 0x00000000u, 0x0003003eu, 0x00000008u, 0x00000016u, 0x00050041u,
+    0x0000001au, 0x0000001bu, 0x00000018u, 0x00000019u, 0x0004003du, 0x00000006u, 0x0000001cu, 0x0000001bu,
+    0x0007000cu, 0x00000006u, 0x0000001eu, 0x00000001u, 0x00000028u, 0x0000001cu, 0x0000001du, 0x0003003eu,
+    0x00000017u, 0x0000001eu, 0x0004003du, 0x00000006u, 0x00000021u, 0x00000017u, 0x00050083u, 0x00000006u,
+    0x00000022u, 0x00000020u, 0x00000021u, 0x0004003du, 0x00000006u, 0x00000023u, 0x00000017u, 0x00050081u,
+    0x00000006u, 0x00000024u, 0x00000020u, 0x00000023u, 0x0004003du, 0x00000006u, 0x00000025u, 0x00000008u,
+    0x0008000cu, 0x00000006u, 0x00000026u, 0x00000001u, 0x00000031u, 0x00000022u, 0x00000024u, 0x00000025u,
+    0x0003003eu, 0x0000001fu, 0x00000026u, 0x0004003du, 0x00000006u, 0x00000027u, 0x0000001fu, 0x000500b8u,
+    0x00000029u, 0x0000002au, 0x00000027u, 0x00000028u, 0x000300f7u, 0x0000002cu, 0x00000000u, 0x000400fau,
+    0x0000002au, 0x0000002bu, 0x0000002cu, 0x000200f8u, 0x0000002bu, 0x000100fcu, 0x000200f8u, 0x0000002cu,
+    0x0004003du, 0x00000012u, 0x00000033u, 0x00000031u, 0x0008004fu, 0x00000032u, 0x00000034u, 0x00000033u,
+    0x00000033u, 0x00000000u, 0x00000001u, 0x00000002u, 0x00050041u, 0x0000001au, 0x00000036u, 0x00000031u,
+    0x00000035u, 0x0004003du, 0x00000006u, 0x00000037u, 0x00000036u, 0x0004003du, 0x00000006u, 0x00000038u,
+    0x0000001fu, 0x00050085u, 0x00000006u, 0x00000039u, 0x00000037u, 0x00000038u, 0x00050051u, 0x00000006u,
+    0x0000003au, 0x00000034u, 0x00000000u, 0x00050051u, 0x00000006u, 0x0000003bu, 0x00000034u, 0x00000001u,
+    0x00050051u, 0x00000006u, 0x0000003cu, 0x00000034u, 0x00000002u, 0x00070050u, 0x00000012u, 0x0000003du,
+    0x0000003au, 0x0000003bu, 0x0000003cu, 0x00000039u, 0x0003003eu, 0x0000002fu, 0x0000003du, 0x000100fdu,
+    0x00010038u,
+};
+static const size_t ui_text_glyph_frag_spirv_words = 369;
+
+// ---- ui/text_glyph.vert (OpenGL 4.10 variant) ----
+static const char ui_text_glyph_vert_glsl[] =
+    "#version 410\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - SDF text vertex shader.\n"
+    " *\n"
+    " * Draws a glyph as a small quad.  Two modes share one vertex layout:\n"
+    " *\n"
+    " *   mode 2D (screen space) : a_world is already clip space (NDC), z = 0.\n"
+    " *                            The caller pre-projects the anchor and corner.\n"
+    " *   mode 3D (world space)  : a_world is a world-space quad corner; the\n"
+    " *                            vertex shader applies the camera view*projection.\n"
+    " *\n"
+    " * Vertex layout (expanded per glyph: 4 vertices/quad, all data in the verts):\n"
+    " *   location 0 : vec3  a_world   (clip-space NDC for 2D, world space for 3D)\n"
+    " *   location 1 : vec2  a_uv      (glyph atlas uv)\n"
+    " *   location 2 : vec4  a_color  (r,g,b,a)\n"
+    " *   location 3 : vec4  a_params  (sdf scale, softness, unused, unused)\n"
+    " *\n"
+    " * u_text : set 0 binding 0 UBO\n"
+    " *   u_a = (world view-projection matrix ... packed as four vec4)\n"
+    " *   u_mode = (2D mode flag, sdf scale, sdf softness, unused)\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for both backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL\n"
+    " * before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#ifdef GENESIS_VK\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "GS_UBO(0, 0, TextParams)\n"
+    "{\n"
+    "    mat4 u_view_proj;\n"
+    "    vec4 u_mode; // x = is_2d (1.0 => world.xy is NDC), y = sdf scale, z = sdf softness\n"
+    "};\n"
+    "\n"
+    "GS_IN(0, vec3, a_world);\n"
+    "GS_IN(1, vec2, a_uv);\n"
+    "GS_IN(2, vec4, a_color);\n"
+    "GS_IN(3, vec4, a_params);\n"
+    "\n"
+    "GS_OUT(0, vec2, v_uv);\n"
+    "GS_OUT(1, vec4, v_color);\n"
+    "GS_OUT(2, vec2, v_sdf); // sdf scale, softness\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    v_uv = a_uv;\n"
+    "    v_color = a_color;\n"
+    "    v_sdf = vec2(a_params.x, a_params.y);\n"
+    "    if (u_mode.x > 0.5)\n"
+    "        gl_Position = vec4(a_world.xy, 0.0, 1.0);\n"
+    "    else\n"
+    "        gl_Position = u_view_proj * vec4(a_world, 1.0);\n"
+    "}\n"
+    "";
+static const size_t ui_text_glyph_vert_glsl_size = 7798;
+
+// ---- ui/text_glyph.vert (SPIR-V, Vulkan 1.1) ----
+static const uint32_t ui_text_glyph_vert_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000au, 0x00000047u, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x000d000fu, 0x00000000u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000009u, 0x0000000bu, 0x0000000fu,
+    0x00000011u, 0x00000013u, 0x00000014u, 0x0000002fu, 0x00000033u, 0x00030003u, 0x00000002u, 0x000001c2u,
+    0x00040005u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00040005u, 0x00000009u, 0x76755f76u, 0x00000000u,
+    0x00040005u, 0x0000000bu, 0x76755f61u, 0x00000000u, 0x00040005u, 0x0000000fu, 0x6f635f76u, 0x00726f6cu,
+    0x00040005u, 0x00000011u, 0x6f635f61u, 0x00726f6cu, 0x00040005u, 0x00000013u, 0x64735f76u, 0x00000066u,
+    0x00050005u, 0x00000014u, 0x61705f61u, 0x736d6172u, 0x00000000u, 0x00050005u, 0x0000001fu, 0x74786554u,
+    0x61726150u, 0x0000736du, 0x00060006u, 0x0000001fu, 0x00000000u, 0x69765f75u, 0x705f7765u, 0x006a6f72u,
+    0x00050006u, 0x0000001fu, 0x00000001u, 0x6f6d5f75u, 0x00006564u, 0x00030005u, 0x00000021u, 0x00000000u,
+    0x00060005u, 0x0000002du, 0x505f6c67u, 0x65567265u, 0x78657472u, 0x00000000u, 0x00060006u, 0x0000002du,
+    0x00000000u, 0x505f6c67u, 0x7469736fu, 0x006e6f69u, 0x00070006u, 0x0000002du, 0x00000001u, 0x505f6c67u,
+    0x746e696fu, 0x657a6953u, 0x00000000u, 0x00070006u, 0x0000002du, 0x00000002u, 0x435f6c67u, 0x4470696cu,
+    0x61747369u, 0x0065636eu, 0x00070006u, 0x0000002du, 0x00000003u, 0x435f6c67u, 0x446c6c75u, 0x61747369u,
+    0x0065636eu, 0x00030005u, 0x0000002fu, 0x00000000u, 0x00040005u, 0x00000033u, 0x6f775f61u, 0x00646c72u,
+    0x00040047u, 0x00000009u, 0x0000001eu, 0x00000000u, 0x00040047u, 0x0000000bu, 0x0000001eu, 0x00000001u,
+    0x00040047u, 0x0000000fu, 0x0000001eu, 0x00000001u, 0x00040047u, 0x00000011u, 0x0000001eu, 0x00000002u,
+    0x00040047u, 0x00000013u, 0x0000001eu, 0x00000002u, 0x00040047u, 0x00000014u, 0x0000001eu, 0x00000003u,
+    0x00040048u, 0x0000001fu, 0x00000000u, 0x00000005u, 0x00050048u, 0x0000001fu, 0x00000000u, 0x00000023u,
+    0x00000000u, 0x00050048u, 0x0000001fu, 0x00000000u, 0x00000007u, 0x00000010u, 0x00050048u, 0x0000001fu,
+    0x00000001u, 0x00000023u, 0x00000040u, 0x00030047u, 0x0000001fu, 0x00000002u, 0x00040047u, 0x00000021u,
+    0x00000022u, 0x00000000u, 0x00040047u, 0x00000021u, 0x00000021u, 0x00000000u, 0x00050048u, 0x0000002du,
+    0x00000000u, 0x0000000bu, 0x00000000u, 0x00050048u, 0x0000002du, 0x00000001u, 0x0000000bu, 0x00000001u,
+    0x00050048u, 0x0000002du, 0x00000002u, 0x0000000bu, 0x00000003u, 0x00050048u, 0x0000002du, 0x00000003u,
+    0x0000000bu, 0x00000004u, 0x00030047u, 0x0000002du, 0x00000002u, 0x00040047u, 0x00000033u, 0x0000001eu,
+    0x00000000u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u,
+    0x00000020u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000002u, 0x00040020u, 0x00000008u, 0x00000003u,
+    0x00000007u, 0x0004003bu, 0x00000008u, 0x00000009u, 0x00000003u, 0x00040020u, 0x0000000au, 0x00000001u,
+    0x00000007u, 0x0004003bu, 0x0000000au, 0x0000000bu, 0x00000001u, 0x00040017u, 0x0000000du, 0x00000006u,
+    0x00000004u, 0x00040020u, 0x0000000eu, 0x00000003u, 0x0000000du, 0x0004003bu, 0x0000000eu, 0x0000000fu,
+    0x00000003u, 0x00040020u, 0x00000010u, 0x00000001u, 0x0000000du, 0x0004003bu, 0x00000010u, 0x00000011u,
+    0x00000001u, 0x0004003bu, 0x00000008u, 0x00000013u, 0x00000003u, 0x0004003bu, 0x00000010u, 0x00000014u,
+    0x00000001u, 0x00040015u, 0x00000015u, 0x00000020u, 0x00000000u, 0x0004002bu, 0x00000015u, 0x00000016u,
+    0x00000000u, 0x00040020u, 0x00000017u, 0x00000001u, 0x00000006u, 0x0004002bu, 0x00000015u, 0x0000001au,
+    0x00000001u, 0x00040018u, 0x0000001eu, 0x0000000du, 0x00000004u, 0x0004001eu, 0x0000001fu, 0x0000001eu,
+    0x0000000du, 0x00040020u, 0x00000020u, 0x00000002u, 0x0000001fu, 0x0004003bu, 0x00000020u, 0x00000021u,
+    0x00000002u, 0x00040015u, 0x00000022u, 0x00000020u, 0x00000001u, 0x0004002bu, 0x00000022u, 0x00000023u,
+    0x00000001u, 0x00040020u, 0x00000024u, 0x00000002u, 0x00000006u, 0x0004002bu, 0x00000006u, 0x00000027u,
+    0x3f000000u, 0x00020014u, 0x00000028u, 0x0004001cu, 0x0000002cu, 0x00000006u, 0x0000001au, 0x0006001eu,
+    0x0000002du, 0x0000000du, 0x00000006u, 0x0000002cu, 0x0000002cu, 0x00040020u, 0x0000002eu, 0x00000003u,
+    0x0000002du, 0x0004003bu, 0x0000002eu, 0x0000002fu, 0x00000003u, 0x0004002bu, 0x00000022u, 0x00000030u,
+    0x00000000u, 0x00040017u, 0x00000031u, 0x00000006u, 0x00000003u, 0x00040020u, 0x00000032u, 0x00000001u,
+    0x00000031u, 0x0004003bu, 0x00000032u, 0x00000033u, 0x00000001u, 0x0004002bu, 0x00000006u, 0x00000036u,
+    0x00000000u, 0x0004002bu, 0x00000006u, 0x00000037u, 0x3f800000u, 0x00040020u, 0x0000003du, 0x00000002u,
+    0x0000001eu, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u,
+    0x0004003du, 0x00000007u, 0x0000000cu, 0x0000000bu, 0x0003003eu, 0x00000009u, 0x0000000cu, 0x0004003du,
+    0x0000000du, 0x00000012u, 0x00000011u, 0x0003003eu, 0x0000000fu, 0x00000012u, 0x00050041u, 0x00000017u,
+    0x00000018u, 0x00000014u, 0x00000016u, 0x0004003du, 0x00000006u, 0x00000019u, 0x00000018u, 0x00050041u,
+    0x00000017u, 0x0000001bu, 0x00000014u, 0x0000001au, 0x0004003du, 0x00000006u, 0x0000001cu, 0x0000001bu,
+    0x00050050u, 0x00000007u, 0x0000001du, 0x00000019u, 0x0000001cu, 0x0003003eu, 0x00000013u, 0x0000001du,
+    0x00060041u, 0x00000024u, 0x00000025u, 0x00000021u, 0x00000023u, 0x00000016u, 0x0004003du, 0x00000006u,
+    0x00000026u, 0x00000025u, 0x000500bau, 0x00000028u, 0x00000029u, 0x00000026u, 0x00000027u, 0x000300f7u,
+    0x0000002bu, 0x00000000u, 0x000400fau, 0x00000029u, 0x0000002au, 0x0000003cu, 0x000200f8u, 0x0000002au,
+    0x0004003du, 0x00000031u, 0x00000034u, 0x00000033u, 0x0007004fu, 0x00000007u, 0x00000035u, 0x00000034u,
+    0x00000034u, 0x00000000u, 0x00000001u, 0x00050051u, 0x00000006u, 0x00000038u, 0x00000035u, 0x00000000u,
+    0x00050051u, 0x00000006u, 0x00000039u, 0x00000035u, 0x00000001u, 0x00070050u, 0x0000000du, 0x0000003au,
+    0x00000038u, 0x00000039u, 0x00000036u, 0x00000037u, 0x00050041u, 0x0000000eu, 0x0000003bu, 0x0000002fu,
+    0x00000030u, 0x0003003eu, 0x0000003bu, 0x0000003au, 0x000200f9u, 0x0000002bu, 0x000200f8u, 0x0000003cu,
+    0x00050041u, 0x0000003du, 0x0000003eu, 0x00000021u, 0x00000030u, 0x0004003du, 0x0000001eu, 0x0000003fu,
+    0x0000003eu, 0x0004003du, 0x00000031u, 0x00000040u, 0x00000033u, 0x00050051u, 0x00000006u, 0x00000041u,
+    0x00000040u, 0x00000000u, 0x00050051u, 0x00000006u, 0x00000042u, 0x00000040u, 0x00000001u, 0x00050051u,
+    0x00000006u, 0x00000043u, 0x00000040u, 0x00000002u, 0x00070050u, 0x0000000du, 0x00000044u, 0x00000041u,
+    0x00000042u, 0x00000043u, 0x00000037u, 0x00050091u, 0x0000000du, 0x00000045u, 0x0000003fu, 0x00000044u,
+    0x00050041u, 0x0000000eu, 0x00000046u, 0x0000002fu, 0x00000030u, 0x0003003eu, 0x00000046u, 0x00000045u,
+    0x000200f9u, 0x0000002bu, 0x000200f8u, 0x0000002bu, 0x000100fdu, 0x00010038u,
+};
+static const size_t ui_text_glyph_vert_spirv_words = 518;
+
+// ---- ui/textured_quad.frag (OpenGL 4.10 variant) ----
+static const char ui_textured_quad_frag_glsl[] =
+    "#version 410\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - generic textured/colored quad fragment shader.\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for both backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL\n"
+    " * before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#ifdef GENESIS_VK\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "GS_TEX2D(0, 1, u_quad_texture);\n"
+    "\n"
+    "GS_IN(0, vec2, v_uv);\n"
+    "GS_IN(1, vec4, v_color);\n"
+    "\n"
+    "GS_OUT(0, vec4, out_color);\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    vec4 tex = texture(u_quad_texture, v_uv);\n"
+    "    out_color = vec4(tex.rgb * v_color.rgb, tex.a * v_color.a);\n"
+    "}\n"
+    "";
+static const size_t ui_textured_quad_frag_glsl_size = 6615;
+
+// ---- ui/textured_quad.frag (SPIR-V, Vulkan 1.1) ----
+static const uint32_t ui_textured_quad_frag_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000au, 0x0000002bu, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x0008000fu, 0x00000004u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000011u, 0x00000015u, 0x0000001au,
+    0x00030010u, 0x00000004u, 0x00000007u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u, 0x00000004u,
+    0x6e69616du, 0x00000000u, 0x00030005u, 0x00000009u, 0x00786574u, 0x00060005u, 0x0000000du, 0x75715f75u,
+    0x745f6461u, 0x75747865u, 0x00006572u, 0x00040005u, 0x00000011u, 0x76755f76u, 0x00000000u, 0x00050005u,
+    0x00000015u, 0x5f74756fu, 0x6f6c6f63u, 0x00000072u, 0x00040005u, 0x0000001au, 0x6f635f76u, 0x00726f6cu,
+    0x00040047u, 0x0000000du, 0x00000022u, 0x00000000u, 0x00040047u, 0x0000000du, 0x00000021u, 0x00000001u,
+    0x00040047u, 0x00000011u, 0x0000001eu, 0x00000000u, 0x00040047u, 0x00000015u, 0x0000001eu, 0x00000000u,
+    0x00040047u, 0x0000001au, 0x0000001eu, 0x00000001u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u,
+    0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040017u, 0x00000007u, 0x00000006u, 0x00000004u,
+    0x00040020u, 0x00000008u, 0x00000007u, 0x00000007u, 0x00090019u, 0x0000000au, 0x00000006u, 0x00000001u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x00000001u, 0x00000000u, 0x0003001bu, 0x0000000bu, 0x0000000au,
+    0x00040020u, 0x0000000cu, 0x00000000u, 0x0000000bu, 0x0004003bu, 0x0000000cu, 0x0000000du, 0x00000000u,
+    0x00040017u, 0x0000000fu, 0x00000006u, 0x00000002u, 0x00040020u, 0x00000010u, 0x00000001u, 0x0000000fu,
+    0x0004003bu, 0x00000010u, 0x00000011u, 0x00000001u, 0x00040020u, 0x00000014u, 0x00000003u, 0x00000007u,
+    0x0004003bu, 0x00000014u, 0x00000015u, 0x00000003u, 0x00040017u, 0x00000016u, 0x00000006u, 0x00000003u,
+    0x00040020u, 0x00000019u, 0x00000001u, 0x00000007u, 0x0004003bu, 0x00000019u, 0x0000001au, 0x00000001u,
+    0x00040015u, 0x0000001eu, 0x00000020u, 0x00000000u, 0x0004002bu, 0x0000001eu, 0x0000001fu, 0x00000003u,
+    0x00040020u, 0x00000020u, 0x00000007u, 0x00000006u, 0x00040020u, 0x00000023u, 0x00000001u, 0x00000006u,
+    0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003bu,
+    0x00000008u, 0x00000009u, 0x00000007u, 0x0004003du, 0x0000000bu, 0x0000000eu, 0x0000000du, 0x0004003du,
+    0x0000000fu, 0x00000012u, 0x00000011u, 0x00050057u, 0x00000007u, 0x00000013u, 0x0000000eu, 0x00000012u,
+    0x0003003eu, 0x00000009u, 0x00000013u, 0x0004003du, 0x00000007u, 0x00000017u, 0x00000009u, 0x0008004fu,
+    0x00000016u, 0x00000018u, 0x00000017u, 0x00000017u, 0x00000000u, 0x00000001u, 0x00000002u, 0x0004003du,
+    0x00000007u, 0x0000001bu, 0x0000001au, 0x0008004fu, 0x00000016u, 0x0000001cu, 0x0000001bu, 0x0000001bu,
+    0x00000000u, 0x00000001u, 0x00000002u, 0x00050085u, 0x00000016u, 0x0000001du, 0x00000018u, 0x0000001cu,
+    0x00050041u, 0x00000020u, 0x00000021u, 0x00000009u, 0x0000001fu, 0x0004003du, 0x00000006u, 0x00000022u,
+    0x00000021u, 0x00050041u, 0x00000023u, 0x00000024u, 0x0000001au, 0x0000001fu, 0x0004003du, 0x00000006u,
+    0x00000025u, 0x00000024u, 0x00050085u, 0x00000006u, 0x00000026u, 0x00000022u, 0x00000025u, 0x00050051u,
+    0x00000006u, 0x00000027u, 0x0000001du, 0x00000000u, 0x00050051u, 0x00000006u, 0x00000028u, 0x0000001du,
+    0x00000001u, 0x00050051u, 0x00000006u, 0x00000029u, 0x0000001du, 0x00000002u, 0x00070050u, 0x00000007u,
+    0x0000002au, 0x00000027u, 0x00000028u, 0x00000029u, 0x00000026u, 0x0003003eu, 0x00000015u, 0x0000002au,
+    0x000100fdu, 0x00010038u,
+};
+static const size_t ui_textured_quad_frag_spirv_words = 266;
+
+// ---- ui/textured_quad.vert (OpenGL 4.10 variant) ----
+static const char ui_textured_quad_vert_glsl[] =
+    "#version 410\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - generic textured/colored quad vertex shader.\n"
+    " *\n"
+    " * Used by the CommandBuffer free-draw path (2D fills/lines, 3D quads).\n"
+    " *\n"
+    " * Vertex layout (expanded, per quad):\n"
+    " *   location 0 : vec3 a_position (pre-projected NDC for 2D, world space for 3D)\n"
+    " *   location 1 : vec2 a_uv\n"
+    " *   location 2 : vec4 a_color\n"
+    " *\n"
+    " * u_quad : set 0 binding 0 UBO\n"
+    " *   mat4 u_view_proj (3D only)\n"
+    " *   vec4 u_params : x = is_2d (1.0 => clip space passthrough)\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for both backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_GLSL\n"
+    " * before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#ifdef GENESIS_VK\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "GS_UBO(0, 0, QuadParams)\n"
+    "{\n"
+    "    mat4 u_view_proj;\n"
+    "    vec4 u_params;\n"
+    "};\n"
+    "\n"
+    "GS_IN(0, vec3, a_position);\n"
+    "GS_IN(1, vec2, a_uv);\n"
+    "GS_IN(2, vec4, a_color);\n"
+    "\n"
+    "GS_OUT(0, vec2, v_uv);\n"
+    "GS_OUT(1, vec4, v_color);\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    v_uv = a_uv;\n"
+    "    v_color = a_color;\n"
+    "    if (u_params.x > 0.5)\n"
+    "        gl_Position = vec4(a_position.xy, 0.0, 1.0);\n"
+    "    else\n"
+    "        gl_Position = u_view_proj * vec4(a_position, 1.0);\n"
+    "}\n"
+    "";
+static const size_t ui_textured_quad_vert_glsl_size = 7165;
+
+// ---- ui/textured_quad.vert (SPIR-V, Vulkan 1.1) ----
+static const uint32_t ui_textured_quad_vert_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000au, 0x0000003fu, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x000b000fu, 0x00000000u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000009u, 0x0000000bu, 0x0000000fu,
+    0x00000011u, 0x00000027u, 0x0000002bu, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u, 0x00000004u,
+    0x6e69616du, 0x00000000u, 0x00040005u, 0x00000009u, 0x76755f76u, 0x00000000u, 0x00040005u, 0x0000000bu,
+    0x76755f61u, 0x00000000u, 0x00040005u, 0x0000000fu, 0x6f635f76u, 0x00726f6cu, 0x00040005u, 0x00000011u,
+    0x6f635f61u, 0x00726f6cu, 0x00050005u, 0x00000014u, 0x64617551u, 0x61726150u, 0x0000736du, 0x00060006u,
+    0x00000014u, 0x00000000u, 0x69765f75u, 0x705f7765u, 0x006a6f72u, 0x00060006u, 0x00000014u, 0x00000001u,
+    0x61705f75u, 0x736d6172u, 0x00000000u, 0x00030005u, 0x00000016u, 0x00000000u, 0x00060005u, 0x00000025u,
+    0x505f6c67u, 0x65567265u, 0x78657472u, 0x00000000u, 0x00060006u, 0x00000025u, 0x00000000u, 0x505f6c67u,
+    0x7469736fu, 0x006e6f69u, 0x00070006u, 0x00000025u, 0x00000001u, 0x505f6c67u, 0x746e696fu, 0x657a6953u,
+    0x00000000u, 0x00070006u, 0x00000025u, 0x00000002u, 0x435f6c67u, 0x4470696cu, 0x61747369u, 0x0065636eu,
+    0x00070006u, 0x00000025u, 0x00000003u, 0x435f6c67u, 0x446c6c75u, 0x61747369u, 0x0065636eu, 0x00030005u,
+    0x00000027u, 0x00000000u, 0x00050005u, 0x0000002bu, 0x6f705f61u, 0x69746973u, 0x00006e6fu, 0x00040047u,
+    0x00000009u, 0x0000001eu, 0x00000000u, 0x00040047u, 0x0000000bu, 0x0000001eu, 0x00000001u, 0x00040047u,
+    0x0000000fu, 0x0000001eu, 0x00000001u, 0x00040047u, 0x00000011u, 0x0000001eu, 0x00000002u, 0x00040048u,
+    0x00000014u, 0x00000000u, 0x00000005u, 0x00050048u, 0x00000014u, 0x00000000u, 0x00000023u, 0x00000000u,
+    0x00050048u, 0x00000014u, 0x00000000u, 0x00000007u, 0x00000010u, 0x00050048u, 0x00000014u, 0x00000001u,
+    0x00000023u, 0x00000040u, 0x00030047u, 0x00000014u, 0x00000002u, 0x00040047u, 0x00000016u, 0x00000022u,
+    0x00000000u, 0x00040047u, 0x00000016u, 0x00000021u, 0x00000000u, 0x00050048u, 0x00000025u, 0x00000000u,
+    0x0000000bu, 0x00000000u, 0x00050048u, 0x00000025u, 0x00000001u, 0x0000000bu, 0x00000001u, 0x00050048u,
+    0x00000025u, 0x00000002u, 0x0000000bu, 0x00000003u, 0x00050048u, 0x00000025u, 0x00000003u, 0x0000000bu,
+    0x00000004u, 0x00030047u, 0x00000025u, 0x00000002u, 0x00040047u, 0x0000002bu, 0x0000001eu, 0x00000000u,
+    0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u,
+    0x00040017u, 0x00000007u, 0x00000006u, 0x00000002u, 0x00040020u, 0x00000008u, 0x00000003u, 0x00000007u,
+    0x0004003bu, 0x00000008u, 0x00000009u, 0x00000003u, 0x00040020u, 0x0000000au, 0x00000001u, 0x00000007u,
+    0x0004003bu, 0x0000000au, 0x0000000bu, 0x00000001u, 0x00040017u, 0x0000000du, 0x00000006u, 0x00000004u,
+    0x00040020u, 0x0000000eu, 0x00000003u, 0x0000000du, 0x0004003bu, 0x0000000eu, 0x0000000fu, 0x00000003u,
+    0x00040020u, 0x00000010u, 0x00000001u, 0x0000000du, 0x0004003bu, 0x00000010u, 0x00000011u, 0x00000001u,
+    0x00040018u, 0x00000013u, 0x0000000du, 0x00000004u, 0x0004001eu, 0x00000014u, 0x00000013u, 0x0000000du,
+    0x00040020u, 0x00000015u, 0x00000002u, 0x00000014u, 0x0004003bu, 0x00000015u, 0x00000016u, 0x00000002u,
+    0x00040015u, 0x00000017u, 0x00000020u, 0x00000001u, 0x0004002bu, 0x00000017u, 0x00000018u, 0x00000001u,
+    0x00040015u, 0x00000019u, 0x00000020u, 0x00000000u, 0x0004002bu, 0x00000019u, 0x0000001au, 0x00000000u,
+    0x00040020u, 0x0000001bu, 0x00000002u, 0x00000006u, 0x0004002bu, 0x00000006u, 0x0000001eu, 0x3f000000u,
+    0x00020014u, 0x0000001fu, 0x0004002bu, 0x00000019u, 0x00000023u, 0x00000001u, 0x0004001cu, 0x00000024u,
+    0x00000006u, 0x00000023u, 0x0006001eu, 0x00000025u, 0x0000000du, 0x00000006u, 0x00000024u, 0x00000024u,
+    0x00040020u, 0x00000026u, 0x00000003u, 0x00000025u, 0x0004003bu, 0x00000026u, 0x00000027u, 0x00000003u,
+    0x0004002bu, 0x00000017u, 0x00000028u, 0x00000000u, 0x00040017u, 0x00000029u, 0x00000006u, 0x00000003u,
+    0x00040020u, 0x0000002au, 0x00000001u, 0x00000029u, 0x0004003bu, 0x0000002au, 0x0000002bu, 0x00000001u,
+    0x0004002bu, 0x00000006u, 0x0000002eu, 0x00000000u, 0x0004002bu, 0x00000006u, 0x0000002fu, 0x3f800000u,
+    0x00040020u, 0x00000035u, 0x00000002u, 0x00000013u, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u,
+    0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003du, 0x00000007u, 0x0000000cu, 0x0000000bu, 0x0003003eu,
+    0x00000009u, 0x0000000cu, 0x0004003du, 0x0000000du, 0x00000012u, 0x00000011u, 0x0003003eu, 0x0000000fu,
+    0x00000012u, 0x00060041u, 0x0000001bu, 0x0000001cu, 0x00000016u, 0x00000018u, 0x0000001au, 0x0004003du,
+    0x00000006u, 0x0000001du, 0x0000001cu, 0x000500bau, 0x0000001fu, 0x00000020u, 0x0000001du, 0x0000001eu,
+    0x000300f7u, 0x00000022u, 0x00000000u, 0x000400fau, 0x00000020u, 0x00000021u, 0x00000034u, 0x000200f8u,
+    0x00000021u, 0x0004003du, 0x00000029u, 0x0000002cu, 0x0000002bu, 0x0007004fu, 0x00000007u, 0x0000002du,
+    0x0000002cu, 0x0000002cu, 0x00000000u, 0x00000001u, 0x00050051u, 0x00000006u, 0x00000030u, 0x0000002du,
+    0x00000000u, 0x00050051u, 0x00000006u, 0x00000031u, 0x0000002du, 0x00000001u, 0x00070050u, 0x0000000du,
+    0x00000032u, 0x00000030u, 0x00000031u, 0x0000002eu, 0x0000002fu, 0x00050041u, 0x0000000eu, 0x00000033u,
+    0x00000027u, 0x00000028u, 0x0003003eu, 0x00000033u, 0x00000032u, 0x000200f9u, 0x00000022u, 0x000200f8u,
+    0x00000034u, 0x00050041u, 0x00000035u, 0x00000036u, 0x00000016u, 0x00000028u, 0x0004003du, 0x00000013u,
+    0x00000037u, 0x00000036u, 0x0004003du, 0x00000029u, 0x00000038u, 0x0000002bu, 0x00050051u, 0x00000006u,
+    0x00000039u, 0x00000038u, 0x00000000u, 0x00050051u, 0x00000006u, 0x0000003au, 0x00000038u, 0x00000001u,
+    0x00050051u, 0x00000006u, 0x0000003bu, 0x00000038u, 0x00000002u, 0x00070050u, 0x0000000du, 0x0000003cu,
+    0x00000039u, 0x0000003au, 0x0000003bu, 0x0000002fu, 0x00050091u, 0x0000000du, 0x0000003du, 0x00000037u,
+    0x0000003cu, 0x00050041u, 0x0000000eu, 0x0000003eu, 0x00000027u, 0x00000028u, 0x0003003eu, 0x0000003eu,
+    0x0000003du, 0x000200f9u, 0x00000022u, 0x000200f8u, 0x00000022u, 0x000100fdu, 0x00010038u,
+};
+static const size_t ui_textured_quad_vert_spirv_words = 463;
+
 static const ShaderBinary k_shaders[] = {
     ShaderBinary{"common/fullscreen.vert", common_fullscreen_vert_glsl, common_fullscreen_vert_glsl_size, common_fullscreen_vert_spirv, common_fullscreen_vert_spirv_words},
     ShaderBinary{"ibl/brdf_lut.frag", ibl_brdf_lut_frag_glsl, ibl_brdf_lut_frag_glsl_size, ibl_brdf_lut_frag_spirv, ibl_brdf_lut_frag_spirv_words},
     ShaderBinary{"ibl/equirect_to_cube.frag", ibl_equirect_to_cube_frag_glsl, ibl_equirect_to_cube_frag_glsl_size, ibl_equirect_to_cube_frag_spirv, ibl_equirect_to_cube_frag_spirv_words},
     ShaderBinary{"ibl/irradiance.frag", ibl_irradiance_frag_glsl, ibl_irradiance_frag_glsl_size, ibl_irradiance_frag_spirv, ibl_irradiance_frag_spirv_words},
     ShaderBinary{"ibl/prefilter.frag", ibl_prefilter_frag_glsl, ibl_prefilter_frag_glsl_size, ibl_prefilter_frag_spirv, ibl_prefilter_frag_spirv_words},
+    ShaderBinary{"post/effects.frag", post_effects_frag_glsl, post_effects_frag_glsl_size, post_effects_frag_spirv, post_effects_frag_spirv_words},
     ShaderBinary{"post/tonemap.frag", post_tonemap_frag_glsl, post_tonemap_frag_glsl_size, post_tonemap_frag_spirv, post_tonemap_frag_spirv_words},
     ShaderBinary{"scene/debug_line.frag", scene_debug_line_frag_glsl, scene_debug_line_frag_glsl_size, scene_debug_line_frag_spirv, scene_debug_line_frag_spirv_words},
     ShaderBinary{"scene/debug_line.vert", scene_debug_line_vert_glsl, scene_debug_line_vert_glsl_size, scene_debug_line_vert_spirv, scene_debug_line_vert_spirv_words},
@@ -7379,6 +8732,10 @@ static const ShaderBinary k_shaders[] = {
     ShaderBinary{"scene/skybox.frag", scene_skybox_frag_glsl, scene_skybox_frag_glsl_size, scene_skybox_frag_spirv, scene_skybox_frag_spirv_words},
     ShaderBinary{"scene/unlit_mesh.frag", scene_unlit_mesh_frag_glsl, scene_unlit_mesh_frag_glsl_size, scene_unlit_mesh_frag_spirv, scene_unlit_mesh_frag_spirv_words},
     ShaderBinary{"scene/unlit_mesh.vert", scene_unlit_mesh_vert_glsl, scene_unlit_mesh_vert_glsl_size, scene_unlit_mesh_vert_spirv, scene_unlit_mesh_vert_spirv_words},
+    ShaderBinary{"ui/text_glyph.frag", ui_text_glyph_frag_glsl, ui_text_glyph_frag_glsl_size, ui_text_glyph_frag_spirv, ui_text_glyph_frag_spirv_words},
+    ShaderBinary{"ui/text_glyph.vert", ui_text_glyph_vert_glsl, ui_text_glyph_vert_glsl_size, ui_text_glyph_vert_spirv, ui_text_glyph_vert_spirv_words},
+    ShaderBinary{"ui/textured_quad.frag", ui_textured_quad_frag_glsl, ui_textured_quad_frag_glsl_size, ui_textured_quad_frag_spirv, ui_textured_quad_frag_spirv_words},
+    ShaderBinary{"ui/textured_quad.vert", ui_textured_quad_vert_glsl, ui_textured_quad_vert_glsl_size, ui_textured_quad_vert_spirv, ui_textured_quad_vert_spirv_words},
 };
 
 } // namespace

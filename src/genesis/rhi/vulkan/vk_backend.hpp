@@ -338,6 +338,7 @@ namespace Genesis
             VkSurfaceKHR surface_ = VK_NULL_HANDLE;
             VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
             VkDevice device_ = VK_NULL_HANDLE;
+            VkPhysicalDeviceFeatures device_features_{}; // advertised device features
             VkQueue graphics_queue_ = VK_NULL_HANDLE;
             VkQueue present_queue_ = VK_NULL_HANDLE;
             uint32_t graphics_queue_family_ = UINT32_MAX;

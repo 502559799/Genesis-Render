@@ -207,7 +207,10 @@ int main(int argc, char **argv)
         else if (a == "--backend" && i + 1 < argc)
         {
             ++i;
-            forced_backend = (std::string(argv[i]) == "vulkan") ? RHI::BackendType::Vulkan : RHI::BackendType::OpenGL;
+            std::string be = argv[i];
+            if (be == "vulkan" || be == "vk") forced_backend = RHI::BackendType::Vulkan;
+            else if (be == "metal") forced_backend = RHI::BackendType::Metal;
+            else forced_backend = RHI::BackendType::OpenGL;
             force_backend = true;
             all_backends = false;
         }

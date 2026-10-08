@@ -44,7 +44,19 @@ option(GENESIS_LEGACY_DEMO1 "Build the legacy macOS camera demo" OFF)
 option(GENESIS_VULKAN_VALIDATION "Enable Vulkan validation layers by default" OFF)
 set(GENESIS_REBUILD_SHADERS "AUTO" CACHE STRING "Regenerate shader headers: AUTO|ON|OFF")
 
-if(NOT GENESIS_BACKEND_OPENGL AND NOT GENESIS_BACKEND_VULKAN)
+# Metal is only available on macOS; force it to OFF elsewhere and turn it on
+# by default on Apple so the three backends are available there.
+if(APPLE)
+    set(_metal_default ON)
+else()
+    set(_metal_default OFF)
+endif()
+option(GENESIS_BACKEND_METAL "Build the Metal backend (macOS only)" ${_metal_default})
+if(NOT APPLE)
+    set(GENESIS_BACKEND_METAL OFF CACHE BOOL "Build the Metal backend (macOS only)" FORCE)
+endif()
+
+if(NOT GENESIS_BACKEND_OPENGL AND NOT GENESIS_BACKEND_VULKAN AND NOT GENESIS_BACKEND_METAL)
     message(FATAL_ERROR "At least one rendering backend must be enabled")
 endif()
 
@@ -188,7 +200,25 @@ if(GENESIS_BACKEND_VULKAN)
     list(APPEND GENESIS_ENGINE_ALL_SOURCES ${GENESIS_VK_SOURCES})
 endif()
 
+# Metal backend is Objective-C++ (.mm) and only on macOS; it is not picked
+# up by the *.cpp glob, so add it explicitly.
+if(GENESIS_BACKEND_METAL)
+    list(APPEND GENESIS_ENGINE_ALL_SOURCES
+         ${CMAKE_CURRENT_SOURCE_DIR}/src/genesis/rhi/metal/metal_backend.mm)
+endif()
+
 add_library(GenesisEngine STATIC ${GENESIS_ENGINE_ALL_SOURCES} ${IMGUI_SOURCES} ${LUA_SOURCES})
+
+# Compile the Objective-C++ Metal translation unit in manual reference
+# counting (MRC): Metal's new* methods return +1 objects that we keep in the
+# void* RHI handles, so no ARC bridging is required.  (MRC also lets C-style
+# casts between void* and id<...> work, which the ARC-only __bridge rules
+# would reject.)
+if(GENESIS_BACKEND_METAL)
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/genesis/rhi/metal/metal_backend.mm
+        PROPERTIES COMPILE_FLAGS "-x objective-c++")
+endif()
 
 target_include_directories(GenesisEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -202,6 +232,7 @@ target_include_directories(GenesisEngine PUBLIC
 target_compile_definitions(GenesisEngine PUBLIC
     GENESIS_RHI_OPENGL=$<BOOL:${GENESIS_BACKEND_OPENGL}>
     GENESIS_RHI_VULKAN=$<BOOL:${GENESIS_BACKEND_VULKAN}>
+    GENESIS_RHI_METAL=$<BOOL:${GENESIS_BACKEND_METAL}>
     GENESIS_PLATFORM_MACOS=$<BOOL:${GENESIS_PLATFORM_MACOS}>
     GENESIS_PLATFORM_LINUX=$<BOOL:${GENESIS_PLATFORM_LINUX}>
     GENESIS_ENGINE_VERSION="${PROJECT_VERSION}"
@@ -229,13 +260,20 @@ if(GENESIS_BACKEND_VULKAN)
 endif()
 
 if(GENESIS_PLATFORM_MACOS)
-    target_link_libraries(GenesisEngine PUBLIC
-        "-framework OpenGL"
+    set(GENESIS_MACOS_FRAMEWORKS
         "-framework Cocoa"
         "-framework QuartzCore"
         "-framework IOKit"
         "-framework CoreVideo"
         "-framework CoreFoundation")
+    if(GENESIS_BACKEND_OPENGL)
+        list(APPEND GENESIS_MACOS_FRAMEWORKS "-framework OpenGL")
+    endif()
+    if(GENESIS_BACKEND_METAL)
+        list(APPEND GENESIS_MACOS_FRAMEWORKS "-framework Metal")
+        list(APPEND GENESIS_MACOS_FRAMEWORKS "-framework MetalKit")
+    endif()
+    target_link_libraries(GenesisEngine PUBLIC ${GENESIS_MACOS_FRAMEWORKS})
 else()
     target_link_libraries(GenesisEngine PUBLIC ${CMAKE_DL_LIBS})
     if(GENESIS_BACKEND_OPENGL)

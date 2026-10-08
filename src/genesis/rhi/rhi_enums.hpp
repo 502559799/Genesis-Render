@@ -18,6 +18,7 @@ namespace Genesis
         {
             OpenGL = 0,
             Vulkan = 1,
+            Metal = 2,
         };
 
         const char *backendTypeName(BackendType type);

@@ -47,7 +47,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BUILD_DIR="build"
+BUILD_DIR="build_mac"
 [[ "$BUILD_TYPE" == "Debug" ]] && BUILD_DIR="build-debug"
 [[ "$CLEAN" == "ON" ]] && rm -rf "$BUILD_DIR"
 

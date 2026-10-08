@@ -34,7 +34,7 @@ namespace Genesis
             shutdown();
         }
 
-        bool RenderSystem::initialize(uint32_t width, uint32_t height)
+        bool RenderSystem::initialize(uint32_t width, uint32_t height, const std::string &ttf_path)
         {
             if (!device_)
             {
@@ -49,9 +49,18 @@ namespace Genesis
             if (!createPipelines()) return false;
             if (!createTargets(width, height)) return false;
 
+            // Free command-list / programmable post / SDF text subsystem.
+            // Optional: if the font is missing the overlay silently disables.
+            if (!ttf_path.empty())
+            {
+                overlay_.initialize(device_, ttf_path);
+                overlay_enabled_ = overlay_.ready();
+            }
+
             initialized_ = true;
-            GEN_LOG_INFO("[Render] initialised (%ux%u, backend=%s, shaders=%zu)",
-                         width, height, RHI::backendTypeName(device_->backend()), Shaders::shaderCount());
+            GEN_LOG_INFO("[Render] initialised (%ux%u, backend=%s, shaders=%zu overlay=%d)",
+                         width, height, RHI::backendTypeName(device_->backend()), Shaders::shaderCount(),
+                         (int)overlay_enabled_);
             return true;
         }
 
@@ -59,6 +68,9 @@ namespace Genesis
         {
             if (!device_) return;
             device_->waitIdle();
+
+            overlay_.shutdown();
+            overlay_enabled_ = false;
 
             clearDebugLines();
             if (debug_vb_) { device_->destroyBuffer(debug_vb_); debug_vb_ = nullptr; }

@@ -45,6 +45,7 @@ namespace Genesis
         bool enable_script = true;
         float max_delta_time = 0.1f;    // clamp huge frame steps (e.g. after a stall)
         uint32_t max_frames = 0;        // 0 == run until the window closes
+        std::string sdf_font_path;      // TTF for SDF text; "" disables text/overlay
     };
 
     class Engine

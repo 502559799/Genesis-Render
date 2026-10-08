@@ -19,10 +19,11 @@ GS_IN(0, vec2, v_uv);
 GS_OUT(0, vec4, out_color);
 
 // Skybox specific bindings (this pipeline uses its own small layout):
-//   set 0 binding 1 : sampler2D  u_sky_equirect
-//   set 0 binding 2 : samplerCube u_sky_cube
-GS_TEX2D(0, 1, u_sky_equirect);
-GS_TEXCUBE(0, 2, u_sky_cube);
+//   set 0 : PerFrame UBO (b0) and Environment UBO (b2) only
+//   set 1 binding 0 : sampler2D  u_sky_equirect
+//   set 1 binding 1 : samplerCube u_sky_cube
+GS_TEX2D(1, 0, u_sky_equirect);
+GS_TEXCUBE(1, 1, u_sky_cube);
 
 void main()
 {

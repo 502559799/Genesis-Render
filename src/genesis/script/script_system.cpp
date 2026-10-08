@@ -3,11 +3,13 @@
  */
 #include "script/script_system.hpp"
 #include "foundation_layer/genesis_log.hpp"
+#include "resource/procedural_mesh.hpp"
 #include "resource/resource_types.hpp"
 
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 namespace Genesis
 {
@@ -548,6 +550,252 @@ namespace Genesis
                 return 1;
             }
 
+            //------------------------------------------------------------------
+            // RTTI: create / query full scene objects
+            //------------------------------------------------------------------
+            int lua_create_camera(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->world) return 0;
+                ECS::Entity e = ctx->world->createEntity("ScriptCamera");
+                ECS::TransformComponent t;
+                if (lua_gettop(L) >= 3)
+                    t.position = Math::Vec3((float)luaL_optnumber(L, 1, 0), (float)luaL_optnumber(L, 2, 0),
+                                            (float)luaL_optnumber(L, 3, 6.0));
+                else
+                    t.position = Math::Vec3(0, 0, 6.0f);
+                ctx->world->addComponent<ECS::TransformComponent>(e, t);
+                ECS::CameraComponent cam;
+                cam.fov_degrees = (float)luaL_optnumber(L, 4, 60.0);
+                cam.near_plane = 0.05f;
+                cam.far_plane = 300.0f;
+                cam.active = true;
+                ctx->world->addComponent<ECS::CameraComponent>(e, cam);
+                lua_pushinteger(L, (lua_Integer)e.id);
+                return 1;
+            }
+
+            int lua_create_light(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->world) return 0;
+                ECS::Entity e = ctx->world->createEntity("ScriptLight");
+                ECS::TransformComponent t;
+                t.position = Math::Vec3((float)luaL_optnumber(L, 1, 0), (float)luaL_optnumber(L, 2, 4),
+                                         (float)luaL_optnumber(L, 3, 0));
+                ctx->world->addComponent<ECS::TransformComponent>(e, t);
+                ECS::LightComponent light;
+                light.type = (ECS::LightType)(int)luaL_optinteger(L, 4, 2); // 0 dir,1 point,2 spot
+                light.color = Math::Color((float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
+                                           (float)luaL_optnumber(L, 7, 1));
+                light.intensity = (float)luaL_optnumber(L, 8, 4);
+                light.range = 20.0f;
+                ctx->world->addComponent<ECS::LightComponent>(e, light);
+                lua_pushinteger(L, (lua_Integer)e.id);
+                return 1;
+            }
+
+            int lua_create_environment(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->world) return 0;
+                ECS::Entity e = ctx->world->createEntity("ScriptEnvironment");
+                ECS::EnvironmentComponent env;
+                const char *hdr = luaL_optstring(L, 1, nullptr);
+                if (hdr)
+                {
+                    std::string p(hdr);
+                    env.hdr_equirect_path = ResourceIO::fileExists(p) ? p : "";
+                }
+                env.show_skybox = true;
+                env.use_ibl = true;
+                env.ibl_dirty = true;
+                ctx->world->addComponent<ECS::EnvironmentComponent>(e, env);
+                lua_pushinteger(L, (lua_Integer)e.id);
+                return 1;
+            }
+
+            int lua_has_component(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                ECS::Entity e = toEntity(ctx, luaL_checkinteger(L, 1));
+                const char *comp = luaL_checkstring(L, 2);
+                bool has = false;
+                if (ctx && ctx->world && ctx->world->isAlive(e))
+                {
+                    std::string c(comp);
+                    has = (c == "Camera" && ctx->world->getComponent<ECS::CameraComponent>(e)) ||
+                          (c == "Light" && ctx->world->getComponent<ECS::LightComponent>(e)) ||
+                          (c == "Mesh" && ctx->world->getComponent<ECS::MeshComponent>(e)) ||
+                          (c == "Transform" && ctx->world->getComponent<ECS::TransformComponent>(e)) ||
+                          (c == "Environment" && ctx->world->getComponent<ECS::EnvironmentComponent>(e)) ||
+                          (c == "Script" && ctx->world->getComponent<ECS::ScriptComponent>(e));
+                }
+                lua_pushboolean(L, has ? 1 : 0);
+                return 1;
+            }
+
+            // Procedural mesh: genesis.create_mesh(shape, x,y,z, r,g,b, metallic, roughness)
+            int lua_create_mesh(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->world || !ctx->render) return 0;
+                const char *shape = luaL_checkstring(L, 1);
+                float x = (float)luaL_optnumber(L, 2, 0), y = (float)luaL_optnumber(L, 3, 0), z = (float)luaL_optnumber(L, 4, 0);
+                float r = (float)luaL_optnumber(L, 5, 0.8), g = (float)luaL_optnumber(L, 6, 0.8), b = (float)luaL_optnumber(L, 7, 0.8);
+                float metallic = (float)luaL_optnumber(L, 8, 0.0);
+                float roughness = (float)luaL_optnumber(L, 9, 0.5);
+
+                MaterialData mat;
+                mat.base_color_factor = Math::Color(r, g, b, 1.0f);
+                mat.metallic_factor = metallic;
+                mat.roughness_factor = roughness;
+
+                std::shared_ptr<ModelData> model;
+                std::string s(shape);
+                if (s == "sphere")
+                    model = Procedural::wrapMesh(Procedural::makeSphere(0.5f, 24, 16), mat, s);
+                else if (s == "plane")
+                    model = Procedural::wrapMesh(Procedural::makePlane(2.0f, 2.0f, 1), mat, s);
+                else
+                    model = Procedural::wrapMesh(Procedural::makeBox(1.0f, 1.0f, 1.0f), mat, s);
+
+                ECS::Entity e = ctx->world->createEntity(s);
+                ECS::TransformComponent t;
+                t.position = Math::Vec3(x, y, z);
+                ctx->world->addComponent<ECS::TransformComponent>(e, t);
+                ECS::MeshComponent mc;
+                mc.model = model;
+                mc.pick_id = e.id + 1;
+                ctx->world->addComponent<ECS::MeshComponent>(e, mc);
+                std::vector<uint32_t> gpu = ctx->render->scene().uploadModel(*model, s);
+                Render::RenderSystem::EntityMeshBinding binding;
+                binding.entity = e;
+                binding.mesh_indices = gpu;
+                ctx->render->bindEntityMeshes(binding);
+                lua_pushinteger(L, (lua_Integer)e.id);
+                return 1;
+            }
+
+            //------------------------------------------------------------------
+            // Materials (real-time, index into RenderScene)
+            //------------------------------------------------------------------
+            int lua_material_count(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                lua_pushinteger(L, (lua_Integer)(ctx && ctx->render ? ctx->render->scene().materialCount() : 0));
+                return 1;
+            }
+            int lua_material_set_color(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->scene().setMaterialBaseColor((int32_t)luaL_checkinteger(L, 1),
+                        Math::Color((float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3),
+                                    (float)luaL_checknumber(L, 4), (float)luaL_optnumber(L, 5, 1.0)));
+                return 0;
+            }
+            int lua_material_set_pbr(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->scene().setMaterialPBR((int32_t)luaL_checkinteger(L, 1),
+                        (float)luaL_optnumber(L, 2, 0), (float)luaL_optnumber(L, 3, 1));
+                return 0;
+            }
+            int lua_material_set_emissive(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->scene().setMaterialEmissive((int32_t)luaL_checkinteger(L, 1),
+                        Math::Color((float)luaL_optnumber(L, 2, 0), (float)luaL_optnumber(L, 3, 0),
+                                    (float)luaL_optnumber(L, 4, 0)), (float)luaL_optnumber(L, 5, 1));
+                return 0;
+            }
+
+            //------------------------------------------------------------------
+            // Command buffer: free 2D/3D draw commands (organise -> submit)
+            //------------------------------------------------------------------
+            int lua_cmd_clear(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render) ctx->render->overlay().clearCommands();
+                return 0;
+            }
+            int lua_cmd_fill2d(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->overlay().fill2D(
+                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                        (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4),
+                        (float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
+                        (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1));
+                return 0;
+            }
+            int lua_cmd_line2d(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->overlay().line2D(
+                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                        (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4),
+                        (float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
+                        (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1));
+                return 0;
+            }
+            int lua_cmd_quad3d(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->overlay().quad3D(
+                        (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                        (float)luaL_checknumber(L, 3), (float)luaL_optnumber(L, 4, 0.2f),
+                        (float)luaL_optnumber(L, 5, 0.2f),
+                        (float)luaL_optnumber(L, 6, 1), (float)luaL_optnumber(L, 7, 1),
+                        (float)luaL_optnumber(L, 8, 1), (float)luaL_optnumber(L, 9, 1));
+                return 0;
+            }
+            int lua_post_effect(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (ctx && ctx->render)
+                    ctx->render->overlay().postEffect((Render::PostEffect)(uint32_t)luaL_optinteger(L, 1, 0));
+                return 0;
+            }
+
+            //------------------------------------------------------------------
+            // SDF text
+            //------------------------------------------------------------------
+            int lua_text2d(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->render) return 0;
+                const char *str = luaL_checkstring(L, 4);
+                ctx->render->overlay().text().drawText2D(
+                    (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2),
+                    (float)luaL_optnumber(L, 3, 24), str,
+                    Math::Color((float)luaL_optnumber(L, 5, 1), (float)luaL_optnumber(L, 6, 1),
+                                (float)luaL_optnumber(L, 7, 1), (float)luaL_optnumber(L, 8, 1)),
+                    (float)ctx->render->settings().hdr_width, (float)ctx->render->settings().hdr_height);
+                return 0;
+            }
+            int lua_text3d(lua_State *L)
+            {
+                LuaContext *ctx = context(L);
+                if (!ctx || !ctx->render) return 0;
+                const char *str = luaL_checkstring(L, 5);
+                Math::Mat4 w = Math::Mat4::identity();
+                w.m[3] = (float)luaL_checknumber(L, 1);
+                w.m[7] = (float)luaL_checknumber(L, 2);
+                w.m[11] = (float)luaL_checknumber(L, 3);
+                ctx->render->overlay().text().drawText3D(w, str,
+                    Math::Color((float)luaL_optnumber(L, 6, 1), (float)luaL_optnumber(L, 7, 1),
+                                (float)luaL_optnumber(L, 8, 1), (float)luaL_optnumber(L, 9, 1)),
+                    (float)luaL_optnumber(L, 4, 0.2f));
+                return 0;
+            }
+
         } // namespace
 
         //==================================================================
@@ -640,6 +888,26 @@ namespace Genesis
                 {"render_bake_ibl", lua_render_bake_ibl},
                 {"load_model", lua_load_model},
                 {"model_info", lua_model_info},
+                // RTTI scene construction
+                {"create_camera", lua_create_camera},
+                {"create_light", lua_create_light},
+                {"create_environment", lua_create_environment},
+                {"create_mesh", lua_create_mesh},
+                {"has_component", lua_has_component},
+                // materials (real-time)
+                {"material_count", lua_material_count},
+                {"material_set_color", lua_material_set_color},
+                {"material_set_pbr", lua_material_set_pbr},
+                {"material_set_emissive", lua_material_set_emissive},
+                // command buffer free draws
+                {"cmd_clear", lua_cmd_clear},
+                {"cmd_fill2d", lua_cmd_fill2d},
+                {"cmd_line2d", lua_cmd_line2d},
+                {"cmd_quad3d", lua_cmd_quad3d},
+                {"post_effect", lua_post_effect},
+                // SDF text
+                {"text2d", lua_text2d},
+                {"text3d", lua_text3d},
             };
 
             lua_newtable(lua_state_);

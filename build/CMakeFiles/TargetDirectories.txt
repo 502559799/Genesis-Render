@@ -1,6 +1,0 @@
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisEngine.dir
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisDemo.dir
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/GenesisTests.dir
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/test.dir
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/edit_cache.dir
-/mnt/tos/workspace/Genesis-Render/build/CMakeFiles/rebuild_cache.dir

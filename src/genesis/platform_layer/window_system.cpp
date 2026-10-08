@@ -35,6 +35,14 @@ namespace Genesis
 
             Uint32 flags = 0;
             if (desc.backend == RHI::BackendType::Vulkan) flags |= SDL_WINDOW_VULKAN;
+            else if (desc.backend == RHI::BackendType::Metal)
+            {
+#ifdef SDL_WINDOW_METAL
+                flags |= SDL_WINDOW_METAL; // macOS: CAMetalLayer hosting
+#else
+                flags |= 0x00000020;       // SDL_WINDOW_METAL (SDL 2.0.12+)
+#endif
+            }
             else flags |= SDL_WINDOW_OPENGL;
             if (desc.resizable) flags |= SDL_WINDOW_RESIZABLE;
             if (desc.hidden) flags |= SDL_WINDOW_HIDDEN;
@@ -80,8 +88,16 @@ namespace Genesis
         {
             // SDL_GetWindowSizeInPixels only exists from SDL 2.24; the Vulkan /
             // GL specific helpers are available in every supported version.
-            if (window_ && (SDL_GetWindowFlags(window_) & SDL_WINDOW_VULKAN))
+            Uint32 flags = window_ ? SDL_GetWindowFlags(window_) : 0;
+#ifdef SDL_WINDOW_METAL
+            const Uint32 metal_flag = SDL_WINDOW_METAL;
+#else
+            const Uint32 metal_flag = 0x00000020;
+#endif
+            if (flags & SDL_WINDOW_VULKAN)
                 SDL_Vulkan_GetDrawableSize(window_, w, h);
+            else if (flags & metal_flag)
+                SDL_Vulkan_GetDrawableSize(window_, w, h); // Cocoa view backing size works for Metal
             else
                 SDL_GL_GetDrawableSize(window_, w, h);
             if (*w <= 0 || *h <= 0) SDL_GetWindowSize(window_, w, h);

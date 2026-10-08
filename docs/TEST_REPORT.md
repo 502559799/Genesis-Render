@@ -19,7 +19,7 @@
 |------|------|------|
 | `libGenesisEngine.a` | ✅ 编译通过 | 引擎全部模块（RHI 双后端 / ECS / 资源 / 渲染器 / UI / Lua / Engine）+ imgui + Lua 5.4 + cgltf + stb |
 | `genesis_demo` | ✅ 链接通过 | 演示程序 |
-| `genesis_tests` | ✅ 链接通过 | 测试程序（45 个用例） |
+| `genesis_tests` | ✅ 链接通过 | 测试程序（47 个用例） |
 | 着色器 | ✅ 13/13 | 每个着色器同时通过 **GLSL 410 编译校验** 与 **SPIR-V (Vulkan 1.1) 编译**，产物入库 |
 | 编译告警 | 引擎自有代码 0 error | 第三方代码（imgui/lua）以 `-w` 编译 |
 
@@ -45,7 +45,7 @@
 ### 2.1 OpenGL 后端：**全部通过**
 
 ```
-tests run      : 45
+tests run      : 47
 tests failed   : 0
 checks         : 40562
 check failures : 0
@@ -55,7 +55,7 @@ RESULT: PASS
 ### 2.2 Vulkan 后端：37 / 45 通过
 
 ```
-tests run      : 45
+tests run      : 47
 tests failed   : 8
 RESULT: FAIL   （见第 4 节：已定位的 2 个问题）
 ```

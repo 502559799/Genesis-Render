@@ -542,13 +542,31 @@ namespace Genesis
                 queue_infos.push_back(qci);
             }
 
+            // Request features conditionally: only the ones the physical
+            // device actually advertises.  MoltenVK (macOS) does not expose
+            // wideLines / largePoints and enabling them yields
+            // VK_ERROR_FEATURE_NOT_PRESENT at vkCreateDevice; requesting a
+            // feature the device cannot provide must never happen.
+            VkPhysicalDeviceFeatures device_feats{};
+            vkGetPhysicalDeviceFeatures(physical_device_, &device_feats);
+
             VkPhysicalDeviceFeatures features{};
-            features.samplerAnisotropy = VK_TRUE;
-            features.fillModeNonSolid = VK_TRUE;
-            features.wideLines = VK_TRUE;
-            features.largePoints = VK_TRUE;
-            features.multiViewport = VK_TRUE;
+            // Anisotropy is heavily used by the PBR sampling path; request it
+            // when supported (it is on essentially every Vulkan 1.0 device).
+            features.samplerAnisotropy = device_feats.samplerAnisotropy;
+            // Wireframe (PolygonMode::Line) needs fillModeNonSolid; only ask
+            // for it where available (llvmpipe / most GPUs support it).
+            features.fillModeNonSolid = device_feats.fillModeNonSolid;
+            // Wide lines / large points are non-essential (debug lines fall
+            // back to the guaranteed 1px case).  Wide lines are notably NOT
+            // exposed by MoltenVK, hence the conditional request.
+            features.wideLines = device_feats.wideLines;
+            features.largePoints = device_feats.largePoints;
+            features.multiViewport = device_feats.multiViewport;
             features.textureCompressionBC = VK_FALSE;
+
+            // Record the feature mask so callers can query capabilities.
+            device_features_ = device_feats;
 
             const char *device_extensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
@@ -1091,7 +1109,15 @@ namespace Genesis
             bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
             VmaAllocationCreateInfo aci{};
-            switch (desc.memory_usage)
+            bool has_initial = (desc.initial_data && desc.initial_data_size > 0);
+            // A buffer created with initial data must be host-visible and
+            // persistently mapped (we copy straight into it).  On MoltenVK a
+            // GPU_ONLY allocation cannot be mapped at all (vmaMapMemory returns
+            // VK_ERROR_MEMORY_MAP_FAILED), so force CPU_TO_GPU memory whenever
+            // data is supplied.
+            MemoryUsage mem_usage = desc.memory_usage;
+            if (has_initial) mem_usage = MemoryUsage::CpuToGpu;
+            switch (mem_usage)
             {
             case MemoryUsage::GpuOnly:
                 aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;

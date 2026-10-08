@@ -72,7 +72,10 @@ namespace
             auto next = [&](const char *fallback) -> std::string
             { return (i + 1 < argc) ? argv[++i] : fallback; };
 
-            if (a == "--backend") { std::string v = next("gl"); o.backend = (v == "vulkan" || v == "vk") ? RHI::BackendType::Vulkan : RHI::BackendType::OpenGL; }
+            if (a == "--backend") { std::string v = next("gl");
+                if (v == "vulkan" || v == "vk") o.backend = RHI::BackendType::Vulkan;
+                else if (v == "metal") o.backend = RHI::BackendType::Metal;
+                else o.backend = RHI::BackendType::OpenGL; }
             else if (a == "--headless") o.headless = true;
             else if (a == "--validation") o.validation = true;
             else if (a == "--no-ui") o.enable_ui = false;
@@ -122,6 +125,16 @@ namespace
         char console_buffer[512] = "";
         bool animate_lights = true;
         float elapsed = 0.0f;
+
+        // Live material editor (material index stored from buildScene).
+        int editable_material_index = -1;
+        float material_base_color[3] = {0.2f, 0.6f, 1.0f};
+        float material_metallic = 0.3f;
+        float material_roughness = 0.35f;
+        // Overlay / CommandBuffer demo toggles.
+        bool overlay_demo = true;
+        int post_effect = 0; // 0 none, 1 invert, 2 scanline
+        bool show_3d_text = true;
 
         std::string asset(const std::string &relative) const
         {
@@ -268,6 +281,33 @@ namespace
                 spawnModel(std::make_shared<ModelData>(grid), "MaterialGrid", Math::Vec3(0.0f, 1.6f, -5.5f), 1.0f);
             }
 
+            // ---- live editable material sphere (real-time material UI) --
+            {
+                MeshData sphere = Procedural::makeSphere(0.5f, 32, 20);
+                MaterialData mat;
+                mat.name = "editable";
+                mat.base_color_factor = Math::Color(material_base_color[0], material_base_color[1], material_base_color[2], 1.0f);
+                mat.metallic_factor = material_metallic;
+                mat.roughness_factor = material_roughness;
+                auto model = Procedural::wrapMesh(sphere, mat, "editable_sphere");
+                ECS::Entity e = world.createEntity("EditableSphere");
+                ECS::TransformComponent t;
+                t.position = Math::Vec3(0.0f, 0.75f, 0.0f);
+                world.addComponent<ECS::TransformComponent>(e, t);
+                ECS::MeshComponent mesh;
+                mesh.model = model;
+                mesh.pick_id = e.id + 1;
+                world.addComponent<ECS::MeshComponent>(e, mesh);
+                std::vector<uint32_t> gpu = engine.render().scene().uploadModel(*model, "editable_sphere");
+                Render::RenderSystem::EntityMeshBinding binding;
+                binding.entity = e;
+                binding.mesh_indices = gpu;
+                engine.render().bindEntityMeshes(binding);
+                // The sphere uses one material; its index is the last uploaded.
+                editable_material_index = (int)engine.render().scene().materialCount() - 1;
+                model_entities.push_back(e);
+            }
+
             // ---- Lua driven entity ---------------------------------------
             if (engine.hasScript())
             {
@@ -286,6 +326,16 @@ namespace
                     "end\n";
                 script.enabled = true;
                 world.addComponent<ECS::ScriptComponent>(scripted, script);
+
+                // Full capability demo: adds its own lights/meshes, records
+                // free command-buffer draws, SDF text and a post effect.
+                ECS::Entity full = world.createEntity("LuaFullDemo");
+                world.addComponent<ECS::TransformComponent>(full);
+                ECS::ScriptComponent full_script;
+                std::string full_path = asset("scripts/full_demo.lua");
+                if (ResourceIO::fileExists(full_path)) full_script.script_path = full_path;
+                else full_script.inline_code = "function start(id) genesis.log_info('full demo fallback') end\n";
+                world.addComponent<ECS::ScriptComponent>(full, full_script);
             }
 
             GEN_LOG_INFO("[Demo] scene built: %zu entities, %zu models",
@@ -394,6 +444,55 @@ namespace
                 engine.render().drawSphere(t->position, 0.09f, c, 16);
                 engine.render().drawLine(t->position, t->position + Math::Vec3(0, 0.35f, 0), c);
             });
+
+            // ---- live material updates (real-time material editor) ----
+            if (editable_material_index >= 0)
+            {
+                engine.render().scene().setMaterialBaseColor(editable_material_index,
+                    Math::Color(material_base_color[0], material_base_color[1], material_base_color[2], 1.0f));
+                engine.render().scene().setMaterialPBR(editable_material_index, material_metallic, material_roughness);
+            }
+
+            // ---- CommandBuffer: free draws + SDF text (organise step) ----
+            if (overlay_demo)
+            {
+                auto &ov = engine.render().overlay();
+                ov.clearCommands();
+                ov.postEffect((Render::PostEffect)(uint32_t)post_effect);
+
+                // 2D free draws (screen space): a translucent HUD strip.
+                float sw = (float)engine.render().settings().hdr_width;
+                float sh = (float)engine.render().settings().hdr_height;
+                ov.fill2D(8.0f, sh - 40.0f, 250.0f, 22.0f, 0.05f, 0.06f, 0.09f, 0.6f);
+                ov.line2D(12.0f, sh - 40.0f, 240.0f, sh - 18.0f + std::sin(elapsed * 2.0f) * 6.0f,
+                          0.2f, 0.8f, 1.0f, 0.9f);
+
+                // 3D free draw: a small floating quad in world space.
+                ov.quad3D(-1.4f, 2.2f, 0.0f, 0.4f, 0.02f, 0.9f, 0.4f, 0.1f, 0.9f);
+
+                // SDF 2D text (HUD, after tone mapping).
+                ov.text().drawText2D(20.0f, 20.0f, 26.0f, "Genesis Render",
+                    Math::Color(0.1f, 0.1f, 0.1f, 1.0f), sw, sh);
+                ov.text().drawText2D(20.0f, 52.0f, 16.0f,
+                    std::string("backend: ") + RHI::backendTypeName(engine.device()->backend()) +
+                    "   SDF text / CommandBuffer / programmable post",
+                    Math::Color(0.3f, 0.5f, 0.8f, 1.0f), sw, sh);
+
+                // SDF 3D text label above the editable sphere.
+                if (show_3d_text)
+                {
+                    Math::Mat4 label = Math::Mat4::identity();
+                    label.m[3] = 0.0f; label.m[7] = 1.65f; label.m[11] = 0.0f;
+                    ov.text().drawText3D(label, "LIVE MATERIAL", Math::Color(1.0f, 0.85f, 0.2f, 1.0f), 0.18f);
+                    label.m[3] = -1.4f; label.m[7] = 2.45f; label.m[11] = 0.0f;
+                    ov.text().drawText3D(label, "3D SDF TEXT", Math::Color(0.4f, 1.0f, 0.7f, 1.0f), 0.15f);
+                }
+            }
+            else
+            {
+                engine.render().overlay().clearCommands();
+                engine.render().overlay().postEffect(Render::PostEffect::None);
+            }
         }
 
         //--------------------------------------------------------------
@@ -569,8 +668,35 @@ namespace
                 ImGui::End();
             }
 
+            // ---- material editor + CommandBuffer / text ------------------
+            ImGui::SetNextWindowPos(ImVec2(660, 250), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(330, 300), ImGuiCond_FirstUseEver);
+            if (ImGui::Begin("Material / Overlay / SDF Text"))
+            {
+                ImGui::Text("live editable sphere (PBR):");
+                if (ImGui::ColorEdit3("base color", material_base_color))
+                    engine.render().scene().setMaterialBaseColor(editable_material_index,
+                        Math::Color(material_base_color[0], material_base_color[1], material_base_color[2], 1.0f));
+                ImGui::SliderFloat("metallic", &material_metallic, 0.0f, 1.0f, "%.2f");
+                ImGui::SliderFloat("roughness", &material_roughness, 0.0f, 1.0f, "%.2f");
+                if (ImGui::Button("apply PBR"))
+                    engine.render().scene().setMaterialPBR(editable_material_index, material_metallic, material_roughness);
+                ImGui::Separator();
+
+                const char *fx_names[] = {"None", "Invert", "Scanline"};
+                ImGui::Combo("programmable post", &post_effect, fx_names, 3);
+                ImGui::Checkbox("CommandBuffer / SDF text overlay", &overlay_demo);
+                ImGui::SameLine();
+                ImGui::Checkbox("3D text", &show_3d_text);
+                ImGui::Separator();
+                ImGui::TextWrapped("Record free 2D fills/lines and 3D quads (organise) "
+                                   "and they are submitted next frame (execute).");
+                ImGui::TextWrapped("SDF text: 2D HUD above + 3D world labels.");
+            }
+            ImGui::End();
+
             // ---- log -------------------------------------------------------
-            ImGui::SetNextWindowPos(ImVec2(660, 8), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowPos(ImVec2(1000, 8), ImGuiCond_FirstUseEver);
             ImGui::SetNextWindowSize(ImVec2(360, 240), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Log"))
             {

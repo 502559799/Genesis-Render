@@ -125,6 +125,10 @@ namespace gpu_test
             cfg.enable_script = with_script;
             cfg.vsync = false;
             cfg.max_frames = 0;
+            // Enable the overlay (free command list + SDF text) with the
+            // vendored font so those paths are exercised on both backends.
+            if (ResourceIO::fileExists("assets/fonts/DejaVuSans.ttf"))
+                cfg.sdf_font_path = "assets/fonts/DejaVuSans.ttf";
             ok = engine.initialize(cfg);
             if (!ok) GEN_LOG_ERROR("[test] engine init failed for backend %s", RHI::backendTypeName(g_backend));
             return ok;
@@ -471,6 +475,103 @@ TEST_GPU(render, unlit_geometry_has_expected_coverage)
         img.at(img.width / 2, img.height / 2, r1, g1, b1, a1);
         CHECK_MSG(r1 > g1 * 2, "before the occluder the centre was red");
     }
+}
+
+TEST_GPU(render, live_material_edit_updates_pixels)
+{
+    if (!g_available) return;
+    TestEngine te;
+    if (!te.init(128, 128)) return;
+
+    // A single white-ish sphere; its material is the one we edit live.
+    MaterialData mat;
+    mat.base_color_factor = Math::Color(1, 1, 1, 1);
+    mat.metallic_factor = 0.0f;
+    mat.roughness_factor = 0.4f;
+    auto model = Procedural::wrapMesh(Procedural::makeSphere(0.5f, 24, 16), mat, "edit_sphere");
+
+    ECS::World &world = te.engine.world();
+    ECS::Entity e = world.createEntity("EditSphere");
+    ECS::TransformComponent t;
+    t.position = Math::Vec3(0, 0, 0);
+    world.addComponent<ECS::TransformComponent>(e, t);
+    ECS::MeshComponent m;
+    m.model = model;
+    world.addComponent<ECS::MeshComponent>(e, m);
+    std::vector<uint32_t> gpu = te.engine.render().scene().uploadModel(*model, "edit_sphere");
+    Render::RenderSystem::EntityMeshBinding binding;
+    binding.entity = e;
+    binding.mesh_indices = gpu;
+    te.engine.render().bindEntityMeshes(binding);
+
+    te.addCamera(Math::Vec3(0, 0, 3), Math::Vec3(0, 0, 0), 40.0f);
+    te.addDirectionalLight(Math::Vec3(0, 0, -1), Math::Color(1, 1, 1), 3.0f);
+    Render::RenderSettings &s = te.engine.render().settings();
+    s.show_skybox = false;
+    s.use_ibl = false;
+    s.ambient_intensity = 0.3f;
+
+    int32_t mat_index = te.engine.render().scene().mesh(gpu[0])->material_index;
+    CHECK(mat_index >= 0);
+
+    Image before;
+    CHECK(te.capture(before));
+    if (!before.valid()) return;
+
+    // Recolour the same material green + metal: should visibly change the centre.
+    te.engine.render().scene().setMaterialBaseColor(mat_index, Math::Color(0.1f, 1.0f, 0.15f, 1.0f));
+    te.engine.render().scene().setMaterialPBR(mat_index, 0.9f, 0.3f);
+    Image after;
+    CHECK(te.capture(after));
+    if (!after.valid()) return;
+
+    uint8_t r0, g0, b0, a0;
+    after.at(after.width / 2, after.height / 2, r0, g0, b0, a0);
+    GEN_LOG_INFO("[test] live-material centre pixel = (%u,%u,%u)", r0, g0, b0);
+    CHECK_MSG(g0 > r0 && g0 > b0, "live base-colour edit made the sphere green at the centre");
+}
+
+TEST_GPU(render, overlay_commandlist_renders_and_post_effect_changes_output)
+{
+    if (!g_available) return;
+    TestEngine te;
+    if (!te.init(128, 128)) return;
+    // Overlay (free command list + SDF text) is only initialised when a font
+    // is provided; skip if the font asset is absent on this machine.
+    Render::OverlaySystem &ov = te.engine.render().overlay();
+    if (!ov.ready()) { GEN_LOG_WARN("[test] overlay not ready (no font); skipping"); return; }
+
+    te.addCamera(Math::Vec3(0, 0, 3), Math::Vec3(0, 0, 0), 40.0f);
+
+    Image clean;
+    CHECK(te.capture(clean));
+    if (!clean.valid()) return;
+
+    // Record a full-screen bright fill + SDF text, then capture; this must not
+    // crash and must change the output.
+    ov.clearCommands();
+    ov.fill2D(0, 0, 128, 128, 0.9f, 0.2f, 0.2f, 1.0f);
+    ov.text().drawText2D(20, 20, 18.0f, "HELLO SDF", Math::Color(1, 1, 1, 1), 128, 128);
+    Image filled;
+    CHECK(te.capture(filled));
+    if (filled.valid())
+    {
+        uint8_t r, g, b, a;
+        filled.at(60, 60, r, g, b, a);
+        GEN_LOG_INFO("[test] overlay fill pixel (60,60)=(%u,%u,%u); mean diff=%.4f", r, g, b, clean.meanAbsDifference(filled));
+        CHECK_MSG(clean.meanAbsDifference(filled) > 0.02f, "free command-list draws reach the frame");
+    }
+
+    // Programmable post: the invert effect flips the (near-black empty) scene
+    // to near-white.  Compare against a clean capture with no effect and no
+    // overlay fill, so the effect actually changes the background.
+    ov.clearCommands();
+    ov.postEffect(Render::PostEffect::Invert);
+    Image inverted;
+    CHECK(te.capture(inverted));
+    ov.postEffect(Render::PostEffect::None);
+    if (inverted.valid())
+        CHECK_MSG(clean.meanAbsDifference(inverted) > 0.1f, "programmable post invert changes the output");
 }
 
 TEST_GPU(pbr, directional_light_creates_shading_gradient)

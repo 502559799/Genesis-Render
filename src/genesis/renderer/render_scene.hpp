@@ -183,6 +183,13 @@ namespace Genesis
 
             GpuMaterial *defaultMaterial();
 
+            // Real-time material editing: push new scalar factors into an
+            // already-uploaded material's UBO so UI/slider changes are
+            // visible the next frame without re-uploading the model.
+            void setMaterialBaseColor(int32_t index, const Math::Color &color);
+            void setMaterialPBR(int32_t index, float metallic, float roughness);
+            void setMaterialEmissive(int32_t index, const Math::Color &color, float strength);
+
             // Pushes a per-frame material setting (currently the shading model
             // selector) into every uploaded material UBO.  Returns the number
             // of materials updated.
