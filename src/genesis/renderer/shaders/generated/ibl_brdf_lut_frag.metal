@@ -72,11 +72,11 @@ float geometrySmithIBL(thread const float& NoV, thread const float& NoL, thread 
 }
 
 static inline __attribute__((always_inline))
-float2 integrateBRDF(thread const float& NoV, thread const float& roughness, constant IBLParams& _239)
+float2 integrateBRDF(thread const float& NoV, thread const float& roughness, constant IBLParams& v_239)
 {
     float3 V = float3(sqrt(1.0 - (NoV * NoV)), 0.0, NoV);
     float3 N = float3(0.0, 0.0, 1.0);
-    uint sample_count = uint(fast::max(_239.u_ibl_a.w, 256.0));
+    uint sample_count = uint(fast::max(v_239.u_ibl_a.w, 256.0));
     float A = 0.0;
     float B = 0.0;
     for (uint i = 0u; i < sample_count; i++)
@@ -99,7 +99,7 @@ float2 integrateBRDF(thread const float& NoV, thread const float& roughness, con
             float param_7 = roughness;
             float G = geometrySmithIBL(param_5, param_6, param_7);
             float g_vis = (G * VoH) / fast::max(NoH * NoV, 9.9999997473787516355514526367188e-06);
-            float fc = powr(1.0 - VoH, 5.0);
+            float fc = pow(1.0 - VoH, 5.0);
             A += ((1.0 - fc) * g_vis);
             B += (fc * g_vis);
         }
@@ -113,14 +113,14 @@ float gsSaturate(thread const float& v)
     return fast::clamp(v, 0.0, 1.0);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant IBLParams& _239 [[buffer(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant IBLParams& v_239 [[buffer(0)]])
 {
     main0_out out = {};
     float NoV = fast::clamp(in.v_uv.x, 9.9999997473787516355514526367188e-05, 1.0);
     float roughness = fast::clamp(in.v_uv.y, 0.04500000178813934326171875, 1.0);
     float param = NoV;
     float param_1 = roughness;
-    float2 brdf = integrateBRDF(param, param_1, _239);
+    float2 brdf = integrateBRDF(param, param_1, v_239);
     float param_2 = brdf.x;
     float param_3 = brdf.y;
     out.out_color = float4(gsSaturate(param_2), gsSaturate(param_3), 0.0, 1.0);

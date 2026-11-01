@@ -23,6 +23,17 @@
 | 反射 Inspector | Hierarchy / Inspector（任意组件编辑、增删组件） | `reflection.*` | `features/*_showcase_inspector.png` |
 | UI 方向 | 三后端截图 UI 均正向 | `ui.imgui_is_upright_in_captured_frames` | 所有 features 截图 |
 | PBR / IBL / tonemap / 模型导入 | Render settings；showcase 场景 | `pbr.*`、`ibl.*`、`render.*`、`gltf.*`、`fbx.*` | `<gl\|vk\|mtl>_pbr_grid_*`、`*_tonemap_*`、`*_model_*`、`*_skybox_ibl_env` |
+| **资源包（v4）** | Windows → Asset package browser：选择 `.gpkg` → Load package → Open in scene；或 `--scene package --package FILE` | `package.cascade_loads_and_validates`、`package.rejects_non_packages`、`package.cascade_scene_runs_from_package` | `docs/images/v4/gl_package.png` |
+| **JavaScript / V8（v4）** | Windows → Lua / JS console，切换 JavaScript 并运行示例；`--script game.js`；scene 内 `language:"js"` | `js.rtti_scene_construction`、`package.cascade_scene_runs_from_package`（执行 JS `launch()`） | `gl_package.png` / `gl_game.png` 中的 JS HUD |
+| **物理（v4）** | `--scene physics --lab physics`；暂停/单步、重力、迭代、生成刚体、接触列表、调试形状 | `physics.free_fall_and_gravity`、`sphere_rests_on_plane`、`box_stack_settles`、`hinge_keeps_anchor_distance` | `docs/images/v4/gl_physics.png` |
+| **小游戏 Cascade（v4）** | `--scene game` 或 Windows → Cascade game；鼠标瞄准 + 点击/空格发射，R 重开，P 调试 | `package.cascade_scene_runs_from_package` | `docs/images/v4/gl_game.png` |
+| **3D Gaussian Splatting（v4）** | `--scene gaussian --lab gaussian`；加载 PLY，调尺寸/透明度/排序/裁剪 | `gaussian.loads_3dgs_ply`、`gaussian.rejects_missing_file`、`gaussian.splats_render_on_every_backend` | `docs/images/v4/gl_gaussian.png` |
+| **动画（v5）** | `--scene animation --lab animation`：2D 序列帧播放/帧步进 + 3D compute 顶点动画参数 | `compute.vertex_animation_kernel`、`animation.sprite_and_vertex_animation_scene` | `docs/images/v5/gl_animation.png` |
+| **Ray Tracing（v5）** | `--scene raytracing --lab raytracing`：自动/手动追踪、分辨率/采样、增删球 | `raytracing.gpu_trace_to_texture` | `docs/images/v5/gl_raytracing.png` |
+| **四大 API（v5）** | Windows → Engine APIs (4) | `api.four_facades` | `docs/images/v5/gl_apis.png` |
+| **Encoder/Decoder（v5）** | Windows → Encoder / Decoder lab：Raw/H.264 往返、当前帧 PNG、能力表 | `codec.raw_and_png_roundtrip`、`codec.h264_hardware_or_software_roundtrip` | `docs/images/v5/gl_codec.png` |
+| **音视频播放（v5）** | `--scene media --lab media`：播放 `assets/media/sample.mp4`，播放/暂停/seek/音量/音频设备 | `codec.media_player_decodes_video_and_audio` | `docs/images/v5/gl_media.png` |
+| **三后端覆盖（v4）** | `./build.sh --test`（自动使用 lavapipe）；Metal 在 macOS 执行同一测试 | 新增 `TEST_GPU` 在每个后端各跑一遍；GL/Vulkan 跨后端 MATCH | `docs/BACKEND_COMPATIBILITY.md` |
 
 ## 2. 效果图清单
 
@@ -53,7 +64,15 @@ done
 ## 3. 自己复现
 
 ```bash
-./build.sh --clean --test                    # 编译 + 124 个测试 + 跨后端比对
+./build.sh --clean --test                    # 编译 + 全部测试 + 跨后端比对
+./build/bin/genesis_demo --scene physics --lab physics
+./build/bin/genesis_demo --scene game         # cascade.gpkg 运行时加载
+./build/bin/genesis_demo --scene gaussian --lab gaussian
+./build/bin/genesis_demo --scene package --package assets/packages/fx_showcase.gpkg
+./build/bin/genesis_demo --scene animation --lab animation
+./build/bin/genesis_demo --scene raytracing --lab raytracing
+./build/bin/genesis_demo --lab codec
+./build/bin/genesis_demo --lab apis
 ./build.sh --test --validation               # 三后端校验层
 ./build/bin/genesis_demo --backend vulkan --selftest   # 自动走一遍所有场景 / 面板 / 交互路径
 ./build/bin/genesis_demo --backend vulkan    # 交互验证（菜单 Scene / Windows）

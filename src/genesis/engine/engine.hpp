@@ -13,9 +13,11 @@
 #ifndef __GENESIS_ENGINE_HPP__
 #define __GENESIS_ENGINE_HPP__
 
+#include "api/engine_apis.hpp"
 #include "ecs/components.hpp"
 #include "ecs/systems.hpp"
 #include "platform_layer/input_system.hpp"
+#include "physics/physics.hpp"
 #include "platform_layer/window_system.hpp"
 #include "renderer/render_system.hpp"
 #include "rhi/rhi.hpp"
@@ -30,6 +32,25 @@
 
 namespace Genesis
 {
+    class AssetPackage;
+
+    namespace Script
+    {
+        class JSSystem;
+    }
+    namespace API
+    {
+        class ComputeAPI;
+        class RenderingAPI;
+        class RayTracingAPI;
+        class EncoderDecoderAPI;
+    }
+    namespace Animation
+    {
+        class AnimationSystem;
+    }
+    using AssetPackagePtr = std::shared_ptr<AssetPackage>;
+
     struct EngineConfig
     {
         std::string app_name = "Genesis Render";
@@ -43,6 +64,7 @@ namespace Genesis
         bool srgb_backbuffer = false;
         bool enable_ui = true;
         bool enable_script = true;
+        bool enable_js = true;
         float max_delta_time = 0.1f;    // clamp huge frame steps (e.g. after a stall)
         float fixed_delta_time = 0.0f;  // > 0: every frame advances by exactly this (recording)
         uint32_t max_frames = 0;        // 0 == run until the window closes
@@ -72,6 +94,20 @@ namespace Genesis
         UI::UISystem &ui() { return ui_; }
         Script::ScriptSystem &script() { return *script_; }
         bool hasScript() const { return script_ != nullptr; }
+        Script::JSSystem &js() { return *js_; }
+        bool hasJS() const { return js_ != nullptr; }
+        EngineAPIs apis()
+        {
+            return EngineAPIs{rendering_.get(), compute_.get(), ray_tracing_.get(), encoder_decoder_.get()};
+        }
+        API::RenderingAPI &rendering() { return *rendering_; }
+        API::ComputeAPI &compute() { return *compute_; }
+        API::RayTracingAPI &rayTracing() { return *ray_tracing_; }
+        API::EncoderDecoderAPI &encoderDecoder() { return *encoder_decoder_; }
+        Animation::AnimationSystem &animation() { return *animation_; }
+        bool hasAnimation() const { return animation_ != nullptr; }
+        Physics::PhysicsSystem &physics() { return *physics_; }
+        bool hasPhysics() const { return physics_ != nullptr; }
         Platform::InputSystem &input() { return input_; }
         Platform::WindowSystem &window() { return window_; }
         RHI::RHIDevice *device() { return device_; }
@@ -94,6 +130,16 @@ namespace Genesis
         bool captureFrame(std::vector<uint8_t> &rgba_out, uint32_t &width, uint32_t &height);
         bool saveScreenshot(const std::string &path); // .png or .tga by extension
 
+        // ---- dynamic asset packages ---------------------------------
+        // Loads a .gpkg and extracts it into <asset_dir>/.package_cache/<name>
+        // so that the existing file based importers can consume it.  The
+        // package stays alive (and is exposed to the package browser) until
+        // unloadAssetPackage().
+        AssetPackagePtr loadAssetPackage(const std::string &path, std::string *error = nullptr);
+        void unloadAssetPackage();
+        const AssetPackagePtr &activePackage() const { return active_package_; }
+        const std::string &packageRoot() const { return package_root_; }
+
         // Loads a model, creates an entity for it and wires up the GPU meshes.
         ECS::Entity spawnModel(const std::string &path, const Math::Vec3 &position = Math::Vec3(0.0f),
                                float scale = 1.0f, const std::string &name_override = "");
@@ -110,8 +156,18 @@ namespace Genesis
         // pointers for direct access (render settings, capture, scripting).
         Render::RenderSystem *render_ = nullptr;
         Script::ScriptSystem *script_ = nullptr;
+        Script::JSSystem *js_ = nullptr;
+        Animation::AnimationSystem *animation_ = nullptr;
+        Physics::PhysicsSystem *physics_ = nullptr;
         ECS::TransformSystem *transform_system_ = nullptr;
+        std::unique_ptr<API::RenderingAPI> rendering_;
+        std::unique_ptr<API::ComputeAPI> compute_;
+        std::unique_ptr<API::RayTracingAPI> ray_tracing_;
+        std::unique_ptr<API::EncoderDecoderAPI> encoder_decoder_;
         ECS::CameraControllerSystem *camera_controller_system_ = nullptr;
+
+        AssetPackagePtr active_package_;
+        std::string package_root_;
 
         UiDrawCallback ui_draw_callback_;
         bool initialized_ = false;

@@ -1,0 +1,19 @@
+{
+  "name": "Platform",
+  "base_color": [
+    0.13,
+    0.16,
+    0.2,
+    1.0
+  ],
+  "metallic": 0.35,
+  "roughness": 0.55,
+  "uv_scale": [
+    4,
+    3
+  ],
+  "textures": {
+    "base_color": "textures/checker_albedo.png",
+    "metallic_roughness": "textures/checker_metallic_roughness.png"
+  }
+}

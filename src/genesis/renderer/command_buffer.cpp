@@ -168,6 +168,29 @@ namespace Genesis
             c.c0 = tint;
         }
 
+        void CommandBuffer::drawImageTexture(RHI::RHITexture *texture, RHI::RHISampler *sampler, float x, float y,
+                                             float width, float height, const Math::Color &tint, bool flip_v)
+        {
+            DrawCommand &c = push(DrawCommand::Type::DrawImage);
+            c.raw_texture = texture;
+            c.raw_sampler = sampler;
+            c.v0 = Math::Vec4(x, y, width, height);
+            c.c0 = tint;
+            c.flip_v = flip_v;
+        }
+
+        void CommandBuffer::drawSprite(RHI::RHITexture *texture, RHI::RHISampler *sampler, float x, float y,
+                                       float width, float height, const Math::Vec2 &uv0, const Math::Vec2 &uv1,
+                                       const Math::Color &tint)
+        {
+            DrawCommand &c = push(DrawCommand::Type::DrawSprite);
+            c.raw_texture = texture;
+            c.raw_sampler = sampler;
+            c.v0 = Math::Vec4(x, y, width, height);
+            c.v1 = Math::Vec4(uv0.x, uv0.y, uv1.x, uv1.y);
+            c.c0 = tint;
+        }
+
         void CommandBuffer::drawText(const std::string &text, float x, float y, float size, const Math::Color &color,
                                      Text::TextAlign align, float outline, const Math::Color &outline_color)
         {

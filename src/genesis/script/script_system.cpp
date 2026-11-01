@@ -3,6 +3,7 @@
  */
 #include "script/script_system.hpp"
 #include "script/lua_reflection.hpp"
+#include "engine/engine.hpp"
 #include "reflection/engine_bindings.hpp"
 #include "foundation_layer/genesis_log.hpp"
 #include "resource/procedural_mesh.hpp"
@@ -955,6 +956,9 @@ namespace Genesis
         bool ScriptSystem::executeString(const std::string &code, const std::string &name)
         {
             if (!lua_state_) return false;
+            Reflect::EngineContext &rctx = Reflect::context();
+            lua_pushstring(lua_state_, rctx.engine ? rctx.engine->packageRoot().c_str() : "");
+            lua_setglobal(lua_state_, "asset_root");
             int status = luaL_loadbuffer(lua_state_, code.c_str(), code.size(), name.c_str());
             if (status != LUA_OK)
             {
@@ -974,7 +978,7 @@ namespace Genesis
 
         bool ScriptSystem::loadComponentScript(ECS::Entity entity, ECS::ScriptComponent &component)
         {
-            if (!lua_state_) return false;
+            if (!lua_state_ || component.language != ECS::ScriptLanguage::Lua) return false;
 
             std::string source;
             std::string chunk_name;
@@ -997,6 +1001,9 @@ namespace Genesis
                 reportError("script component has neither a path nor inline code");
                 return false;
             }
+
+            lua_pushstring(lua_state_, component.asset_root.c_str());
+            lua_setglobal(lua_state_, "asset_root");
 
             // Build a sandboxed environment so that several scripts cannot
             // clobber each other's globals.
@@ -1092,6 +1099,8 @@ namespace Genesis
         bool ScriptSystem::callHook(ECS::ScriptComponent &component, const char *function, ECS::Entity entity, float delta_time)
         {
             if (!lua_state_ || component.lua_ref < 0) return false;
+            lua_pushstring(lua_state_, component.asset_root.c_str());
+            lua_setglobal(lua_state_, "asset_root");
             // stack: [env]
             lua_rawgeti(lua_state_, LUA_REGISTRYINDEX, component.lua_ref);
             // stack: [env, hook]
@@ -1125,14 +1134,15 @@ namespace Genesis
             // Load scripts that have not been compiled yet.
             world.each<ECS::ScriptComponent>([&](ECS::Entity e, ECS::ScriptComponent &c)
             {
-                if (c.enabled && !c.loaded && (!c.script_path.empty() || !c.inline_code.empty()))
+                if (c.enabled && !c.loaded && c.language == ECS::ScriptLanguage::Lua &&
+                    (!c.script_path.empty() || !c.inline_code.empty()))
                     loadComponentScript(e, c);
             });
 
             const float scaled = delta_time * time_scale_;
             world.each<ECS::ScriptComponent>([&](ECS::Entity e, ECS::ScriptComponent &c)
             {
-                if (!c.enabled || !c.loaded) return;
+                if (!c.enabled || !c.loaded || c.language != ECS::ScriptLanguage::Lua) return;
                 callHook(c, "tick", e, scaled);
             });
 

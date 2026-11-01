@@ -114,9 +114,9 @@ fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _75 [[buff
             color = mix(_109.u_ground_tint.xyz, _109.u_sky_tint.xyz, float3(t));
             float3 sun_dir = float3(0.51214754581451416015625, 0.76822125911712646484375, 0.384110629558563232421875);
             float param_2 = dot(rotated, sun_dir);
-            float sun = powr(gsSaturate(param_2), 512.0);
+            float sun = pow(gsSaturate(param_2), 512.0);
             float param_3 = dot(rotated, sun_dir);
-            float glow = powr(gsSaturate(param_3), 8.0);
+            float glow = pow(gsSaturate(param_3), 8.0);
             color += (((float3(1.0, 0.89999997615814208984375, 0.699999988079071044921875) * sun) * 60.0) + ((float3(0.4000000059604644775390625, 0.3499999940395355224609375, 0.300000011920928955078125) * glow) * 0.5));
         }
     }

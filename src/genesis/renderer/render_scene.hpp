@@ -72,6 +72,10 @@ namespace Genesis
             std::string name;
             RHI::RHIBuffer *vertex_buffer = nullptr;
             RHI::RHIBuffer *index_buffer = nullptr;
+            // Optional compute-written vertex stream.  When non-null the mesh
+            // pass binds this instead of `vertex_buffer` (rest pose).
+            RHI::RHIBuffer *animated_vertex_buffer = nullptr;
+            bool use_animated_vertex_buffer = false;
             uint32_t vertex_count = 0;
             uint32_t index_count = 0;
             RHI::IndexType index_type = RHI::IndexType::UInt32;

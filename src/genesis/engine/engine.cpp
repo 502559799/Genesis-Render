@@ -2,13 +2,22 @@
  * Genesis Render - engine facade implementation
  */
 #include "engine/engine.hpp"
+#include "animation/animation_system.hpp"
+#include "api/compute_api.hpp"
+#include "api/encoder_decoder_api.hpp"
+#include "api/ray_tracing_api.hpp"
+#include "api/rendering_api.hpp"
 #include "foundation_layer/genesis_log.hpp"
+#include "resource/asset_package.hpp"
 #include "resource/resource_types.hpp"
 #include "reflection/engine_bindings.hpp"
+#include "script/js_system.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
+#include <filesystem>
 
 namespace Genesis
 {
@@ -89,9 +98,26 @@ namespace Genesis
             return false;
         }
 
+        // The four public APIs.  Rendering/Compute are available immediately;
+        // ray tracing and codecs initialise lazily but are reported here.
+        rendering_ = std::make_unique<API::RenderingAPI>();
+        rendering_->initialize(device_, render_, world_.get());
+        compute_ = std::make_unique<API::ComputeAPI>();
+        compute_->initialize(device_);
+        ray_tracing_ = std::make_unique<API::RayTracingAPI>();
+        ray_tracing_->initialize(compute_.get(), device_);
+        encoder_decoder_ = std::make_unique<API::EncoderDecoderAPI>();
+        encoder_decoder_->initialize();
+
         // Everything scripts / tools reach through RTTI.
         Reflect::registerEngineTypes();
         Reflect::context() = Reflect::EngineContext{this, world_.get(), render_, &input_};
+
+        physics_ = world_->scheduler().addSystem<Physics::PhysicsSystem>();
+        physics_->initialize(world_.get());
+
+        animation_ = world_->scheduler().addSystem<Animation::AnimationSystem>();
+        animation_->initialize(device_, render_, compute_.get());
 
         if (config_.enable_script)
         {
@@ -103,6 +129,18 @@ namespace Genesis
                 config_.enable_script = false;
             }
         }
+
+#if GENESIS_ENABLE_V8
+        if (config_.enable_script && config_.enable_js)
+        {
+            js_ = world_->scheduler().addSystem<Script::JSSystem>();
+            if (!js_->initialize(world_.get(), render_, &input_))
+            {
+                GEN_LOG_WARN("[Engine] V8 initialisation failed - continuing without JavaScript");
+                js_ = nullptr;
+            }
+        }
+#endif
 
         camera_controller_system_ = world_->scheduler().addSystem<ECS::CameraControllerSystem>(&input_);
         transform_system_ = world_->scheduler().addSystem<ECS::TransformSystem>();
@@ -139,8 +177,14 @@ namespace Genesis
         // RenderSystem must release its GPU objects before the device dies.
         if (render_) render_->shutdown();
         if (script_) script_->shutdown();
+        if (js_) js_->shutdown();
+        if (animation_) animation_->shutdown();
+        if (ray_tracing_) ray_tracing_->shutdown();
         render_ = nullptr;
         script_ = nullptr;
+        js_ = nullptr;
+        physics_ = nullptr;
+        animation_ = nullptr;
         transform_system_ = nullptr;
         camera_controller_system_ = nullptr;
 
@@ -150,6 +194,11 @@ namespace Genesis
             world_.reset();
         }
 
+        ray_tracing_.reset();
+        encoder_decoder_.reset();
+        if (compute_) compute_->shutdown();
+        compute_.reset();
+        rendering_.reset();
         if (device_)
         {
             device_->shutdown();
@@ -267,6 +316,35 @@ namespace Genesis
         std::string ext = ResourceIO::pathExtension(path);
         if (ext == "tga") return ResourceIO::writeImageTGA(path, w, h, rgba.data());
         return ResourceIO::writeImagePNG(path, w, h, rgba.data());
+    }
+
+    AssetPackagePtr Engine::loadAssetPackage(const std::string &path, std::string *error)
+    {
+        AssetPackagePtr package = std::make_shared<AssetPackage>();
+        if (!package->loadFromFile(path, error)) return nullptr;
+
+        std::string safe_name = package->name();
+        for (char &c : safe_name)
+            if (!(std::isalnum((unsigned char)c) || c == '-' || c == '_')) c = '_';
+        const std::string root = ResourceIO::joinPath(ResourceIO::joinPath(config_.asset_dir, ".package_cache"), safe_name);
+        std::error_code ec;
+        std::filesystem::remove_all(root, ec);
+        if (!package->extractAll(root, error))
+        {
+            GEN_LOG_ERROR("[Package] extraction failed for %s", path.c_str());
+            return nullptr;
+        }
+        unloadAssetPackage();
+        active_package_ = package;
+        package_root_ = root;
+        GEN_LOG_INFO("[Package] '%s' ready at %s", package->name().c_str(), root.c_str());
+        return package;
+    }
+
+    void Engine::unloadAssetPackage()
+    {
+        active_package_.reset();
+        package_root_.clear();
     }
 
     ECS::Entity Engine::spawnModel(const std::string &path, const Math::Vec3 &position, float scale,

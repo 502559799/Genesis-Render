@@ -126,7 +126,7 @@ float gsDistanceAttenuation(thread const float& _distance, thread const float& r
         return 1.0;
     }
     float d = fast::max(_distance, 9.9999997473787516355514526367188e-05);
-    float param = 1.0 - powr(d / range, 4.0);
+    float param = 1.0 - pow(d / range, 4.0);
     float window = gsSaturate(param);
     return (window * window) / (d * d);
 }
@@ -150,7 +150,7 @@ float gsDistributionBlinnPhong(thread const float& NoH, thread const float& roug
     float a = fast::max(roughness * roughness, 9.9999997473787516355514526367188e-05);
     float shininess = fast::max((2.0 / (a * a)) - 2.0, 1.0);
     float norm = (shininess + 2.0) / 6.283185482025146484375;
-    return norm * powr(fast::max(NoH, 0.0), shininess);
+    return norm * pow(fast::max(NoH, 0.0), shininess);
 }
 
 static inline __attribute__((always_inline))
@@ -196,7 +196,7 @@ float gsGeometrySmith(thread const float& NoV, thread const float& NoL, thread c
 static inline __attribute__((always_inline))
 float3 gsFresnelSchlick(thread const float& cosTheta, thread const float3& F0)
 {
-    float f = powr(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    float f = pow(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
     return F0 + ((float3(1.0) - F0) * f);
 }
 
@@ -232,14 +232,14 @@ float3 gsEvaluateDirectLight(thread const PbrSurface& s, thread const float3& L,
 }
 
 static inline __attribute__((always_inline))
-float3 gsProceduralSky(thread const float3& dir, constant Environment& _573)
+float3 gsProceduralSky(thread const float3& dir, constant Environment& v_573)
 {
     float param = (dir.y * 0.5) + 0.5;
     float t = gsSaturate(param);
-    float3 sky = mix(_573.u_ground_tint.xyz, _573.u_sky_tint.xyz, float3(t));
+    float3 sky = mix(v_573.u_ground_tint.xyz, v_573.u_sky_tint.xyz, float3(t));
     float param_1 = dot(fast::normalize(dir), float3(0.51214754581451416015625, 0.76822125911712646484375, 0.384110629558563232421875));
-    float sun = powr(gsSaturate(param_1), 256.0);
-    return (sky * _573.u_env_params.x) + float3(sun * 8.0);
+    float sun = pow(gsSaturate(param_1), 256.0);
+    return (sky * v_573.u_env_params.x) + float3(sun * 8.0);
 }
 
 static inline __attribute__((always_inline))
@@ -262,7 +262,7 @@ static inline __attribute__((always_inline))
 float3 gsFresnelSchlickRough(thread const float& cosTheta, thread const float3& F0, thread const float& roughness)
 {
     float3 one = fast::max(float3(1.0 - roughness), F0);
-    float f = powr(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+    float f = pow(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
     return F0 + ((one - F0) * f);
 }
 
@@ -281,7 +281,7 @@ float3 gsEvaluateIBL(thread const PbrSurface& s, thread const float3& irradiance
     return (diffuse + specular) * s.ao;
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buffer(0)]], constant Lights& _855 [[buffer(1)]], constant Environment& _573 [[buffer(2)]], constant Material& _610 [[buffer(8)]], texturecube<float> u_irradiance_map [[texture(3)]], texturecube<float> u_prefilter_map [[texture(4)]], texture2d<float> u_brdf_lut [[texture(5)]], texture2d<float> u_base_color [[texture(9)]], texture2d<float> u_metallic_roughness [[texture(10)]], texture2d<float> u_normal [[texture(11)]], texture2d<float> u_occlusion [[texture(12)]], texture2d<float> u_emissive [[texture(13)]], sampler u_irradiance_mapSmplr [[sampler(3)]], sampler u_prefilter_mapSmplr [[sampler(4)]], sampler u_brdf_lutSmplr [[sampler(5)]], sampler u_base_colorSmplr [[sampler(9)]], sampler u_metallic_roughnessSmplr [[sampler(10)]], sampler u_normalSmplr [[sampler(11)]], sampler u_occlusionSmplr [[sampler(12)]], sampler u_emissiveSmplr [[sampler(13)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buffer(0)]], constant Lights& _855 [[buffer(1)]], constant Environment& v_573 [[buffer(2)]], constant Material& _610 [[buffer(8)]], texturecube<float> u_irradiance_map [[texture(3)]], texturecube<float> u_prefilter_map [[texture(4)]], texture2d<float> u_brdf_lut [[texture(5)]], texture2d<float> u_base_color [[texture(9)]], texture2d<float> u_metallic_roughness [[texture(10)]], texture2d<float> u_normal [[texture(11)]], texture2d<float> u_occlusion [[texture(12)]], texture2d<float> u_emissive [[texture(13)]], sampler u_irradiance_mapSmplr [[sampler(3)]], sampler u_prefilter_mapSmplr [[sampler(4)]], sampler u_brdf_lutSmplr [[sampler(5)]], sampler u_base_colorSmplr [[sampler(9)]], sampler u_metallic_roughnessSmplr [[sampler(10)]], sampler u_normalSmplr [[sampler(11)]], sampler u_occlusionSmplr [[sampler(12)]], sampler u_emissiveSmplr [[sampler(13)]])
 {
     main0_out out = {};
     float4 base_color = _610.u_base_color_factor;
@@ -488,15 +488,15 @@ fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buf
     color += (((_855.u_ambient_color.xyz * _855.u_ambient_color.w) * surface.albedo) * surface.ao);
     float3 R = reflect(-V, N);
     float NoV = fast::max(dot(N, V), 9.9999997473787516355514526367188e-06);
-    if (_573.u_ibl_params.x > 0.5)
+    if (v_573.u_ibl_params.x > 0.5)
     {
         float3 irradiance;
         float3 prefiltered;
         float2 brdf;
-        if (_573.u_ibl_params.z > 1.5)
+        if (v_573.u_ibl_params.z > 1.5)
         {
             irradiance = u_irradiance_map.sample(u_irradiance_mapSmplr, N).xyz;
-            float mip_levels = fast::max(_573.u_ibl_params.y, 1.0);
+            float mip_levels = fast::max(v_573.u_ibl_params.y, 1.0);
             float lod = surface.roughness * (mip_levels - 1.0);
             prefiltered = u_prefilter_map.sample(u_prefilter_mapSmplr, R, level(lod)).xyz;
             brdf = u_brdf_lut.sample(u_brdf_lutSmplr, float2(NoV, surface.roughness)).xy;
@@ -504,9 +504,9 @@ fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buf
         else
         {
             float3 param_17 = N;
-            irradiance = gsProceduralSky(param_17, _573);
+            irradiance = gsProceduralSky(param_17, v_573);
             float3 param_18 = R;
-            prefiltered = gsProceduralSky(param_18, _573);
+            prefiltered = gsProceduralSky(param_18, v_573);
             float param_19 = NoV;
             float param_20 = surface.roughness;
             brdf = gsEnvBRDFApprox(param_19, param_20);
@@ -515,7 +515,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buf
         float3 param_22 = irradiance;
         float3 param_23 = prefiltered;
         float2 param_24 = brdf;
-        color += (gsEvaluateIBL(param_21, param_22, param_23, param_24) * _573.u_env_params.x);
+        color += (gsEvaluateIBL(param_21, param_22, param_23, param_24) * v_573.u_env_params.x);
     }
     color += surface.emissive;
     out.out_color = float4(fast::max(color, float3(0.0)), alpha);

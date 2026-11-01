@@ -1,0 +1,58 @@
+/*
+ * Genesis Render - 3D vertex animation (compute)
+ *
+ * Copies the rest-pose vertex buffer into the animated buffer and applies a
+ * travelling sine deformation to position + normal.  The vertex layout is the
+ * engine's interleaved 88-byte Vertex (22 floats).
+ *
+ * binding 0 : base vertex buffer   (read only)
+ * binding 1 : animated vertex buffer (write only)
+ * binding 2 : parameters           (vec4 p0 = time, amplitude, frequency, speed;
+ *                                   vec4 p1 = vertex count, ...)
+ */
+#include "common/genesis_shader.h"
+
+layout(local_size_x = 64) in;
+
+GS_SSBO_RO(0, 0, BaseVertexBuffer) { float data[]; } base_vertices;
+GS_SSBO_WO(0, 1, AnimatedVertexBuffer) { float data[]; } animated_vertices;
+GS_SSBO(0, 2, AnimParams) { vec4 p0; vec4 p1; } anim_params;
+
+const uint kFloatsPerVertex = 22u;
+
+void main()
+{
+    const uint index = gl_GlobalInvocationID.x;
+    const uint count = uint(anim_params.p1.x);
+    if (index >= count) return;
+
+    const uint base = index * kFloatsPerVertex;
+    for (uint i = 0u; i < kFloatsPerVertex; ++i)
+        animated_vertices.data[base + i] = base_vertices.data[base + i];
+
+    vec3 p = vec3(base_vertices.data[base + 0u],
+                  base_vertices.data[base + 1u],
+                  base_vertices.data[base + 2u]);
+    const float time = anim_params.p0.x;
+    const float amplitude = anim_params.p0.y;
+    const float frequency = anim_params.p0.z;
+    const float speed = anim_params.p0.w;
+
+    const float wave = sin(p.x * frequency + time * speed) *
+                       cos(p.z * frequency * 0.7 + time * speed * 0.6);
+    p.y += wave * amplitude;
+    p.x += sin(p.y * frequency * 0.5 + time * speed * 0.4) * amplitude * 0.25;
+
+    // Normal of the displaced surface (approximation that keeps lighting
+    // responsive without a second pass).
+    const float dx = cos(p.x * frequency + time * speed) * frequency * amplitude;
+    const float dz = cos(p.z * frequency * 0.7 + time * speed * 0.6) * frequency * amplitude * 0.7;
+    vec3 n = normalize(vec3(-dx, 1.0, -dz));
+
+    animated_vertices.data[base + 0u] = p.x;
+    animated_vertices.data[base + 1u] = p.y;
+    animated_vertices.data[base + 2u] = p.z;
+    animated_vertices.data[base + 3u] = n.x;
+    animated_vertices.data[base + 4u] = n.y;
+    animated_vertices.data[base + 5u] = n.z;
+}

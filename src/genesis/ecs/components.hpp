@@ -191,18 +191,152 @@ namespace Genesis
         };
 
         //==================================================================
-        // Script (Lua)
+        // Script (Lua or JavaScript)
         //==================================================================
+        enum class ScriptLanguage : uint32_t
+        {
+            Lua = 0,
+            JavaScript = 1,
+        };
+
         struct ScriptComponent
         {
             static constexpr const char *kComponentName = "Script";
 
-            std::string script_path; // .lua file (preferred)
+            std::string script_path; // .lua / .js file (preferred)
             std::string inline_code; // used when script_path is empty
+            // Optional asset root (a mounted package).  `asset()` inside the
+            // script resolves relative paths against it.
+            std::string asset_root;
+            ScriptLanguage language = ScriptLanguage::Lua;
             bool enabled = true;
             bool loaded = false;
-            // Internal handle managed by ScriptSystem (Lua registry reference).
+            // Internal handles managed by the script systems.
             int32_t lua_ref = -1;
+            int64_t js_ref = -1;
+        };
+
+        //==================================================================
+        // Animation
+        //==================================================================
+        // 2D sprite-sheet sequence animation.  The texture is a grid of
+        // columns x rows frames; the AnimationSystem advances `time` and
+        // draws the current UV rect through the engine batch path.
+        struct SpriteAnimationComponent
+        {
+            static constexpr const char *kComponentName = "SpriteAnimation";
+
+            std::string texture;          // sprite sheet path
+            uint32_t columns = 4;
+            uint32_t rows = 1;
+            uint32_t frame_count = 4;
+            float fps = 12.0f;
+            bool loop = true;
+            bool playing = true;
+            bool screen_space = true;     // false: project the entity position
+            float size = 160.0f;          // pixels (screen) / world units
+            Math::Vec3 screen_position = Math::Vec3(40.0f, 40.0f, 0.0f);
+            Math::Color tint = Math::Color(1.0f, 1.0f, 1.0f, 1.0f);
+            bool depth_test = false;
+
+            // Runtime (written by AnimationSystem).
+            float time = 0.0f;
+            uint32_t frame = 0;
+        };
+
+        // 3D vertex animation performed by a compute shader.  The system
+        // creates an output vertex buffer, dispatches the kernel every frame
+        // and the mesh pass draws the animated buffer instead of the rest pose.
+        struct VertexAnimationComponent
+        {
+            static constexpr const char *kComponentName = "VertexAnimation";
+
+            std::string shader = "anim/vertex_anim.comp";
+            float amplitude = 0.22f;
+            float frequency = 2.2f;
+            float speed = 2.0f;
+            bool enabled = true;
+        };
+
+        //==================================================================
+        // Physics: rigid body, collider and hinge joint data.
+        //
+        // The components are pure data.  PhysicsSystem owns the solver state
+        // (see physics/physics.hpp) and writes dynamic transforms back into
+        // TransformComponent every frame.
+        //==================================================================
+        enum class BodyType : uint32_t
+        {
+            Static = 0,
+            Dynamic = 1,
+            Kinematic = 2,
+        };
+
+        enum class ColliderShape : uint32_t
+        {
+            Sphere = 0,
+            Box = 1,
+            Plane = 2,
+            Capsule = 3,
+        };
+
+        const char *bodyTypeName(BodyType type);
+        const char *colliderShapeName(ColliderShape shape);
+
+        struct RigidBodyComponent
+        {
+            static constexpr const char *kComponentName = "RigidBody";
+
+            BodyType type = BodyType::Dynamic;
+            float mass = 1.0f;
+            float restitution = 0.3f;
+            float friction = 0.55f;
+            float linear_damping = 0.04f;
+            float angular_damping = 0.08f;
+            float gravity_scale = 1.0f;
+            Math::Vec3 linear_velocity = Math::Vec3(0.0f);
+            Math::Vec3 angular_velocity = Math::Vec3(0.0f);
+            bool use_gravity = true;
+            bool allow_sleep = true;
+            bool sleeping = false;
+            float sleep_timer = 0.0f; // solver bookkeeping, preserved across frames
+            bool active = true;
+        };
+
+        struct ColliderComponent
+        {
+            static constexpr const char *kComponentName = "Collider";
+
+            ColliderShape shape = ColliderShape::Box;
+            // Box: half extents.  Sphere: `radius`.  Capsule: `radius` +
+            // `height` (total, along local Y).  Plane: infinite, uses the
+            // body transform's +Y as normal.
+            Math::Vec3 half_extents = Math::Vec3(0.5f);
+            float radius = 0.5f;
+            float height = 1.0f;
+            Math::Vec3 center = Math::Vec3(0.0f);
+            bool is_trigger = false;
+            bool debug_draw = true;
+        };
+
+        struct HingeJointComponent
+        {
+            static constexpr const char *kComponentName = "HingeJoint";
+
+            // Empty / dead / no RigidBody -> anchored to the world.
+            ECS::EntityId other = kInvalidEntityId;
+            // World-space anchor point and (initially world-space) hinge axis.
+            Math::Vec3 anchor = Math::Vec3(0.0f);
+            Math::Vec3 axis = Math::Vec3(0.0f, 1.0f, 0.0f);
+            bool enable_limit = false;
+            float min_angle_degrees = -180.0f;
+            float max_angle_degrees = 180.0f;
+            bool enable_motor = false;
+            float motor_speed = 0.0f;   // rad/s
+            float motor_force = 0.0f;   // max angular impulse per step
+
+            // Solver bookkeeping (radians, accumulated around `axis`).
+            float current_angle = 0.0f;
         };
 
         //==================================================================

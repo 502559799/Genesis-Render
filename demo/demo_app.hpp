@@ -17,11 +17,17 @@
 #ifndef __GENESIS_DEMO_APP_HPP__
 #define __GENESIS_DEMO_APP_HPP__
 
+#include "api/encoder_decoder_api.hpp"
+#include "api/ray_tracing_api.hpp"
+#include "media/media_player.hpp"
 #include "engine/engine.hpp"
 #include "reflection/engine_bindings.hpp"
 #include "renderer/command_buffer.hpp"
+#include "renderer/gaussian_splat.hpp"
 #include "renderer/render_texture.hpp"
+#include "script/js_system.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,6 +44,13 @@ namespace Demo
         Showcase = 0,      // C++ built scene (models, materials, labels)
         LuaScene = 1,      // assets/scripts/scene_builder.lua (pure RTTI)
         LuaCommandBuffer,  // showcase + assets/scripts/commandbuffer_demo.lua
+        Physics,           // rigid bodies, colliders, hinge, debug shapes
+        Game,              // physics mini-game loaded from an asset package
+        Gaussian,          // 3D gaussian splat viewer
+        Package,           // generic .gpkg scene loaded at runtime
+        Animation,         // 2D sprite + 3D compute vertex animation
+        RayTracing,        // GPU compute ray tracer page
+        Media,             // libav* video + audio playback
         Empty,
         Count
     };
@@ -58,8 +71,9 @@ namespace Demo
         std::string showcase_dir;
         std::string asset_dir = GENESIS_ASSET_DIR;
         SceneKind scene = SceneKind::Showcase;
-        std::string script; // extra Lua file attached as a script entity
-        std::string lab;    // pre-enabled lab for screenshots: material | commandbuffer | custom | text
+        std::string script; // extra script file attached as a script entity (.lua / .js)
+        std::string package; // .gpkg loaded by --scene package / game
+        std::string lab;    // pre-enabled lab: material | commandbuffer | custom | text | physics | gaussian | package
         bool selftest = false;
         bool tour = false;        // scripted feature walkthrough (camera, material edits, pipelines, scenes)
         std::string record_dir;   // save every frame as DIR/frame_NNNN.png (fixed time step)
@@ -90,6 +104,19 @@ namespace Demo
         void resetWorld();
         void buildShowcase(bool with_monitor = true);
         void buildMinimalRig(); // camera + sun + environment
+        void buildPhysicsScene();
+        void buildGaussianScene();
+        void buildGameScene();
+        void buildAnimationScene();
+        void buildRayTracingScene();
+        void buildMediaScene();
+        bool loadPackage(const std::string &path, std::string *error = nullptr);
+        void buildFromActivePackage();
+        void recordPhysicsDebug();
+        void recordGaussian();
+        void recordRayTracing();
+        void updateMedia(float dt);
+        void refreshPackageList();
         ECS::Entity attachScript(const std::string &path, const std::string &entity_name);
         ECS::Entity spawnFile(const std::string &path, const std::string &name, const Math::Vec3 &pos, float scale);
         ECS::Entity spawnMesh(const std::string &name, const Reflect::MeshAssetPtr &mesh, const Render::MaterialPtr &mat,
@@ -114,6 +141,15 @@ namespace Demo
         void drawMaterialPanel();
         void drawCommandBufferPanel();
         void drawTextPanel();
+        void drawPhysicsPanel();
+        void drawGaussianPanel();
+        void drawPackagePanel();
+        void drawGamePanel();
+        void drawAnimationPanel();
+        void drawRayTracingPanel();
+        void drawCodecPanel();
+        void drawApisPanel();
+        void drawMediaPanel();
         void drawConsolePanel();
         void drawLogPanel();
         void drawHelpPanel();
@@ -145,6 +181,15 @@ namespace Demo
         bool show_material_ = false;
         bool show_cb_ = false;
         bool show_text_ = false;
+        bool show_physics_ = false;
+        bool show_gaussian_ = false;
+        bool show_package_ = false;
+        bool show_game_ = false;
+        bool show_animation_ = false;
+        bool show_raytracing_ = false;
+        bool show_codec_ = false;
+        bool show_apis_ = false;
+        bool show_media_ = false;
         bool show_console_ = false;
         bool show_log_ = false;
         bool show_help_ = false;
@@ -200,7 +245,70 @@ namespace Demo
         Math::Vec3 text3d_pos_ = Math::Vec3(0.0f, 3.2f, 0.0f);
         Math::Color text3d_color_ = Math::Color(0.3f, 0.9f, 1.0f, 1.0f);
 
-        // Lua console
+        // Physics lab
+        bool physics_debug_ = true;
+        bool physics_paused_ = false;
+        int physics_spawn_kind_ = 0; // 0 sphere, 1 box, 2 capsule
+        float physics_spawn_height_ = 6.0f;
+        float physics_spawn_spread_ = 0.5f;
+        uint64_t physics_last_steps_ = 0;
+
+        // Gaussian splat lab
+        Gaussian::GaussianSplatCloud gaussian_cloud_;
+        Gaussian::GaussianSplatRenderer gaussian_renderer_;
+        Gaussian::SplatSettings gaussian_settings_;
+        Render::CommandBufferPtr gaussian_cb_;
+        std::string gaussian_path_;
+        char gaussian_path_input_[512] = "";
+        bool gaussian_auto_orbit_ = true;
+
+        // Packages / mini-game
+        std::vector<std::string> package_files_;
+        int package_index_ = 0;
+        std::string package_manifest_;
+        std::string package_status_;
+        bool package_scene_loaded_ = false;
+        std::string game_status_;
+
+        // Animation lab
+        ECS::Entity anim_sprite_ = ECS::nullEntity();
+        ECS::Entity anim_vertex_ = ECS::nullEntity();
+        bool sprite_playing_ = true;
+        float sprite_fps_ = 16.0f;
+        float vertex_amplitude_ = 0.22f;
+        float vertex_frequency_ = 2.2f;
+        float vertex_speed_ = 2.0f;
+        bool vertex_animation_enabled_ = true;
+
+        // Ray tracing lab
+        Render::CommandBufferPtr rt_cb_;
+        API::RTSettings rt_settings_;
+        std::vector<API::RTSphere> rt_scene_;
+        bool rt_auto_trace_ = true;
+        bool rt_trace_requested_ = true;
+        std::string rt_status_;
+        double rt_last_ms_ = 0.0;
+
+        // Media player lab
+        std::unique_ptr<Media::MediaPlayer> media_player_;
+        Render::CommandBufferPtr media_cb_;
+        RHI::RHITexture *media_texture_ = nullptr;
+        RHI::RHISampler *media_sampler_ = nullptr;
+        uint64_t media_serial_ = 0;
+        int media_texture_width_ = 0;
+        int media_texture_height_ = 0;
+        float media_volume_ = 0.8f;
+        char media_path_[512] = "";
+        std::string media_status_;
+        bool no_audio_device_ = false;
+
+        // Codec lab
+        std::string codec_status_;
+        bool codec_busy_ = false;
+        bool codec_capture_requested_ = false;
+
+        // Console language: 0 Lua, 1 JavaScript
+        int console_language_ = 0;
         char console_[2048] = "";
         std::vector<std::string> console_history_;
     };

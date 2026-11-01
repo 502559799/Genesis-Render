@@ -4,6 +4,7 @@
 #include "reflection/engine_bindings.hpp"
 #include "engine/engine.hpp"
 #include "foundation_layer/genesis_log.hpp"
+#include "physics/physics.hpp"
 #include "platform_layer/input_system.hpp"
 #include "renderer/render_system.hpp"
 #include "resource/procedural_mesh.hpp"
@@ -538,6 +539,81 @@ namespace Genesis
                     .property("tag", &Tag::tag)
                     .property("layer", &Tag::layer);
                 bindComponent<Tag>();
+
+                using SA = ECS::SpriteAnimationComponent;
+                registerClass<SA>("SpriteAnimation", "2D sprite-sheet sequence animation")
+                    .property("texture", &SA::texture)
+                    .property("columns", &SA::columns)
+                    .property("rows", &SA::rows)
+                    .property("frame_count", &SA::frame_count)
+                    .property("fps", &SA::fps).range(0.0f, 120.0f)
+                    .property("loop", &SA::loop)
+                    .property("playing", &SA::playing)
+                    .property("screen_space", &SA::screen_space)
+                    .property("size", &SA::size).range(1.0f, 2000.0f)
+                    .property("screen_position", &SA::screen_position)
+                    .property("tint", &SA::tint)
+                    .property("depth_test", &SA::depth_test)
+                    .readonly("frame", [](SA &s) { return (int64_t)s.frame; })
+                    .readonly("time", [](SA &s) { return s.time; });
+                bindComponent<SA>();
+
+                using VA = ECS::VertexAnimationComponent;
+                registerClass<VA>("VertexAnimation", "3D vertex animation driven by a compute shader")
+                    .property("shader", &VA::shader)
+                    .property("amplitude", &VA::amplitude).range(0.0f, 4.0f)
+                    .property("frequency", &VA::frequency).range(0.0f, 20.0f)
+                    .property("speed", &VA::speed).range(0.0f, 20.0f)
+                    .property("enabled", &VA::enabled);
+                bindComponent<VA>();
+
+                using RB = ECS::RigidBodyComponent;
+                registerClass<RB>("RigidBody", "Rigid body state (solved by PhysicsSystem)")
+                    .enumProperty("type", names({"static", "dynamic", "kinematic"}),
+                                  [](RB &b) { return (int)b.type; }, [](RB &b, int v) { b.type = (ECS::BodyType)v; })
+                    .property("mass", &RB::mass).range(0.001f, 1000.0f)
+                    .property("restitution", &RB::restitution).range(0.0f, 1.0f)
+                    .property("friction", &RB::friction).range(0.0f, 2.0f)
+                    .property("linear_damping", &RB::linear_damping).range(0.0f, 5.0f)
+                    .property("angular_damping", &RB::angular_damping).range(0.0f, 5.0f)
+                    .property("gravity_scale", &RB::gravity_scale).range(-2.0f, 4.0f)
+                    .property("use_gravity", &RB::use_gravity)
+                    .property("linear_velocity", &RB::linear_velocity)
+                    .property("angular_velocity", &RB::angular_velocity)
+                    .property("allow_sleep", &RB::allow_sleep)
+                    .property("active", &RB::active)
+                    .property("sleeping", [](RB &b) { return b.sleeping; },
+                              [](RB &b, bool v) { b.sleeping = v; if (!v) b.sleep_timer = 0.0f; })
+                    .readonly("sleep_timer", [](RB &b) { return b.sleep_timer; });
+                bindComponent<RB>();
+
+                using Col = ECS::ColliderComponent;
+                registerClass<Col>("Collider", "Collision shape used by the physics solver")
+                    .enumProperty("shape", names({"sphere", "box", "plane", "capsule"}),
+                                  [](Col &c) { return (int)c.shape; }, [](Col &c, int v) { c.shape = (ECS::ColliderShape)v; })
+                    .property("half_extents", &Col::half_extents)
+                    .property("radius", &Col::radius).range(0.001f, 100.0f)
+                    .property("height", &Col::height).range(0.001f, 100.0f)
+                    .property("center", &Col::center)
+                    .property("is_trigger", &Col::is_trigger)
+                    .property("debug_draw", &Col::debug_draw);
+                bindComponent<Col>();
+
+                using HJ = ECS::HingeJointComponent;
+                registerClass<HJ>("HingeJoint", "Hinge constraint: point anchor + single rotation axis")
+                    .property("other", [](HJ &j) { return (int64_t)j.other; },
+                              [](HJ &j, int64_t v) { j.other = (ECS::EntityId)v; },
+                              "entity id of the second body (-1 = world)")
+                    .property("anchor", &HJ::anchor, "world-space anchor point")
+                    .property("axis", &HJ::axis, "world-space rotation axis")
+                    .property("enable_limit", &HJ::enable_limit)
+                    .property("min_angle", &HJ::min_angle_degrees).range(-360.0f, 360.0f)
+                    .property("max_angle", &HJ::max_angle_degrees).range(-360.0f, 360.0f)
+                    .property("enable_motor", &HJ::enable_motor)
+                    .property("motor_speed", &HJ::motor_speed)
+                    .property("motor_force", &HJ::motor_force)
+                    .readonly("current_angle", [](HJ &j) { return j.current_angle; });
+                bindComponent<HJ>();
             }
 
             void registerRendering()
@@ -799,11 +875,49 @@ namespace Genesis
                             })
                     .method("drawLine", [](RS &r, Math::Vec3 a, Math::Vec3 b, Value color) { r.drawLine(a, b, colorArg(color, Math::Color::white())); },
                             "debug line for the current frame (cleared after each frame)")
+                    .method("drawBox", [](RS &r, Math::Vec3 center, Math::Vec3 half_extents, Value color)
+                            {
+                                Math::AABB box;
+                                box.minPoint = center - half_extents;
+                                box.maxPoint = center + half_extents;
+                                box.valid = true;
+                                r.drawBox(box, colorArg(color, Math::Color::white()));
+                            }, "(vec3 center, vec3 half extents, [color])")
                     .method("clearDebugLines", [](RS &r) { r.clearDebugLines(); });
             }
 
             void registerEngine()
             {
+                using Ph = Physics::PhysicsSystem;
+                registerClass<Ph>("Physics", "Rigid body physics world (gravity, contacts, impulses)")
+                    .property("gravity", [](Ph &p) { return p.settings().gravity; },
+                              [](Ph &p, Math::Vec3 g) { p.settings().gravity = g; })
+                    .property("enabled", [](Ph &p) { return p.settings().enabled; },
+                              [](Ph &p, bool v) { p.settings().enabled = v; })
+                    .property("paused", [](Ph &p) { return p.paused(); }, [](Ph &p, bool v) { p.setPaused(v); })
+                    .property("debug_draw", [](Ph &p) { return p.settings().debug_draw; },
+                              [](Ph &p, bool v) { p.settings().debug_draw = v; })
+                    .property("solver_iterations", [](Ph &p) { return (int64_t)p.settings().solver_iterations; },
+                              [](Ph &p, int64_t v) { p.settings().solver_iterations = (uint32_t)std::max<int64_t>(1, v); })
+                    .readonly("body_count", [](Ph &p) { return (int64_t)p.bodyCount(); })
+                    .readonly("dynamic_bodies", [](Ph &p) { return (int64_t)p.dynamicBodyCount(); })
+                    .readonly("contacts", [](Ph &p) { return (int64_t)p.contactCount(); })
+                    .readonly("triggers", [](Ph &p) { return (int64_t)p.triggerCount(); })
+                    .readonly("step_ms", [](Ph &p) { return p.stepTimeMs(); })
+                    .method("applyImpulse", [](Ph &p, ECS::Entity e, Math::Vec3 impulse, Value point)
+                            {
+                                ECS::World *w = Reflect::context().world;
+                                if (!w || !w->isAlive(e)) return false;
+                                const ECS::TransformComponent *t = w->getComponent<ECS::TransformComponent>(e);
+                                Math::Vec3 at = point.isNil() && t ? t->position : point.asVec3();
+                                return p.applyImpulse(*w, e, impulse, at);
+                            }, "(Entity, vec3 impulse, [vec3 world point])")
+                    .method("stepOnce", [](Ph &p)
+                            {
+                                ECS::World *w = Reflect::context().world;
+                                if (w) p.stepOnce(*w);
+                            }, "advances one fixed step while paused");
+
                 registerClass<Engine>("Engine", "Engine facade (frame loop, window, subsystems)")
                     .readonly("fps", [](Engine &e) { return e.fps(); })
                     .readonly("frame_time_ms", [](Engine &e) { return e.frameTimeMs(); })
@@ -813,6 +927,7 @@ namespace Genesis
                     .readonly("device", [](Engine &e) { return e.device()->info().device_name; })
                     .readonly("world", [](Engine &e) { return &e.world(); })
                     .readonly("renderer", [](Engine &e) { return &e.render(); })
+                    .readonly("physics", [](Engine &e) { return &e.physics(); })
                     .method("quit", [](Engine &e) { e.requestQuit(); })
                     .method("screenshot", [](Engine &e, std::string path) { return e.saveScreenshot(path); })
                     .method("spawnModel", [](Engine &e, std::string path, Value pos, Value scale, Value name)

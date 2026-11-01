@@ -152,6 +152,17 @@ namespace Genesis
         //------------------------------------------------------------------
         // Command buffer
         //------------------------------------------------------------------
+        enum class BufferAccess : uint32_t
+        {
+            ShaderRead = 0,
+            ShaderWrite,
+            VertexAttributeRead,
+            TransferRead,
+            TransferWrite,
+            HostRead,
+            HostWrite,
+        };
+
         enum class CommandBufferUsage : uint32_t
         {
             OneTimeSubmit = 0,
@@ -192,6 +203,9 @@ namespace Genesis
 
             // Compute
             virtual void dispatch(uint32_t group_x, uint32_t group_y = 1, uint32_t group_z = 1) = 0;
+            // Makes writes from a compute dispatch visible to the next stage
+            // (e.g. ShaderWrite -> VertexAttributeRead before drawing).
+            virtual void bufferBarrier(RHIBuffer *buffer, BufferAccess before, BufferAccess after) = 0;
 
             // Transfers / barriers
             virtual void copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset,

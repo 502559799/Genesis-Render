@@ -5,16 +5,24 @@
 
 #include "foundation_layer/genesis_log.hpp"
 #include "renderer/render_system.hpp"
+#include "resource/asset_package.hpp"
 #include "resource/procedural_mesh.hpp"
 #include "resource/resource_types.hpp"
+#include "api/encoder_decoder_api.hpp"
+#include "api/ray_tracing_api.hpp"
+#include "scene/scene_loader.hpp"
 #include "script/script_system.hpp"
 #include "ui/ui_system.hpp"
+
+#include "external/json.hpp"
 
 #include <SDL.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <dirent.h>
+#include <sys/stat.h>
 
 namespace Demo
 {
@@ -25,6 +33,13 @@ namespace Demo
         case SceneKind::Showcase: return "showcase";
         case SceneKind::LuaScene: return "lua";
         case SceneKind::LuaCommandBuffer: return "commandbuffer";
+        case SceneKind::Physics: return "physics";
+        case SceneKind::Game: return "game";
+        case SceneKind::Gaussian: return "gaussian";
+        case SceneKind::Package: return "package";
+        case SceneKind::Animation: return "animation";
+        case SceneKind::RayTracing: return "raytracing";
+        case SceneKind::Media: return "media";
         case SceneKind::Empty: return "empty";
         default: return "?";
         }
@@ -40,6 +55,13 @@ namespace Demo
             }
         if (name == "script" || name == "scene_builder") { out = SceneKind::LuaScene; return true; }
         if (name == "cb") { out = SceneKind::LuaCommandBuffer; return true; }
+        if (name == "phys") { out = SceneKind::Physics; return true; }
+        if (name == "minigame" || name == "cascade") { out = SceneKind::Game; return true; }
+        if (name == "splat" || name == "gaussians") { out = SceneKind::Gaussian; return true; }
+        if (name == "gpkg" || name == "assets") { out = SceneKind::Package; return true; }
+        if (name == "anim" || name == "sprite") { out = SceneKind::Animation; return true; }
+        if (name == "rt" || name == "raytrace") { out = SceneKind::RayTracing; return true; }
+        if (name == "video" || name == "player") { out = SceneKind::Media; return true; }
         return false;
     }
 
@@ -51,6 +73,7 @@ namespace Demo
     //======================================================================
     bool DemoApp::initialize()
     {
+        if (options.headless) SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
         EngineConfig cfg;
         cfg.app_name = "Genesis Render - OpenGL / Vulkan / Metal feature demo";
         cfg.asset_dir = options.asset_dir;
@@ -99,11 +122,29 @@ namespace Demo
         for (int i = 0; i < 3; ++i) preview_meshes_.push_back(Reflect::createMeshAsset(kinds[i], sizes[i], 64));
         preview_meshes_.push_back(Reflect::loadMeshAsset(asset("models/DamagedHelmet.glb")));
 
+        refreshPackageList();
         if (options.lab.empty() || options.lab == "material") show_material_ = true;
         else if (options.lab == "commandbuffer") show_cb_ = true;
         else if (options.lab == "custom") { show_cb_ = true; custom_pipeline_ = true; }
         else if (options.lab == "text") show_text_ = true;
         else if (options.lab == "inspector") show_inspector_ = true;
+        else if (options.lab == "physics") show_physics_ = true;
+        else if (options.lab == "gaussian" || options.lab == "splat") show_gaussian_ = true;
+        else if (options.lab == "package") show_package_ = true;
+        else if (options.lab == "game") show_game_ = true;
+        else if (options.lab == "animation" || options.lab == "anim") show_animation_ = true;
+        else if (options.lab == "raytracing" || options.lab == "rt") show_raytracing_ = true;
+        else if (options.lab == "codec") show_codec_ = true;
+        else if (options.lab == "apis") show_apis_ = true;
+        else if (options.lab == "media" || options.lab == "player") show_media_ = true;
+
+        if (options.scene == SceneKind::Physics) { show_physics_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::Gaussian) { show_gaussian_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::Game) { show_game_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::Package) { show_package_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::Animation) { show_animation_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::RayTracing) { show_raytracing_ = true; show_material_ = false; }
+        if (options.scene == SceneKind::Media) { show_media_ = true; show_material_ = false; }
 
         loadScene(options.scene);
         if (!options.script.empty() && engine.hasScript()) attachScript(options.script, "ScriptHost");
@@ -127,8 +168,17 @@ namespace Demo
     void DemoApp::resetWorld()
     {
         ECS::World &world = engine.world();
-        if (engine.hasScript())
-            world.each<ECS::ScriptComponent>([this](ECS::Entity, ECS::ScriptComponent &c) { engine.script().unloadComponentScript(c); });
+        world.each<ECS::ScriptComponent>([this](ECS::Entity, ECS::ScriptComponent &c)
+        {
+            if (c.language == ECS::ScriptLanguage::Lua)
+            {
+                if (engine.hasScript()) engine.script().unloadComponentScript(c);
+            }
+            else if (engine.hasJS())
+            {
+                engine.js().unloadComponentScript(c);
+            }
+        });
         std::vector<ECS::Entity> all = world.entities();
         for (ECS::Entity e : all)
             if (world.isAlive(e)) world.destroyEntity(e);
@@ -143,6 +193,24 @@ namespace Demo
         material_index_ = -1;
         custom_pipeline_ = options.lab == "custom";
         applied_custom_ = false;
+        engine.physics().setPaused(false);
+        engine.physics().settings().debug_draw = false;
+        engine.physics().resetAccumulator();
+        if (gaussian_cb_) gaussian_cb_->clear();
+        if (rt_cb_) rt_cb_->clear();
+        if (media_cb_) media_cb_->clear();
+        if (media_player_) media_player_->close();
+        if (engine.device() && media_texture_) engine.device()->destroyTexture(media_texture_);
+        if (engine.device() && media_sampler_) engine.device()->destroySampler(media_sampler_);
+        media_texture_ = nullptr;
+        media_sampler_ = nullptr;
+        media_texture_width_ = media_texture_height_ = 0;
+        media_serial_ = 0;
+        media_status_.clear();
+        anim_sprite_ = anim_vertex_ = ECS::nullEntity();
+        rt_scene_.clear();
+        rt_status_.clear();
+        package_scene_loaded_ = false;
     }
 
     void DemoApp::loadScene(SceneKind kind)
@@ -160,6 +228,21 @@ namespace Demo
         case SceneKind::LuaScene:
             if (!attachScript(asset("scripts/scene_builder.lua"), "SceneBuilder").valid()) buildMinimalRig();
             break;
+        case SceneKind::Physics: buildPhysicsScene(); break;
+        case SceneKind::Gaussian: buildGaussianScene(); break;
+        case SceneKind::Game: buildGameScene(); break;
+        case SceneKind::Animation: buildAnimationScene(); break;
+        case SceneKind::RayTracing: buildRayTracingScene(); break;
+        case SceneKind::Media: buildMediaScene(); break;
+        case SceneKind::Package:
+            if (!engine.activePackage() && !options.package.empty())
+            {
+                std::string error;
+                if (!loadPackage(options.package, &error))
+                    GEN_LOG_ERROR("[Demo] cannot load package '%s': %s", options.package.c_str(), error.c_str());
+            }
+            buildFromActivePackage();
+            break;
         case SceneKind::Empty:
         default: buildMinimalRig(); break;
         }
@@ -175,6 +258,9 @@ namespace Demo
         rs.addCommandBuffer(Render::CameraEvent::BeforeScene, preview_cb_);
         rs.addCommandBuffer(Render::CameraEvent::BeforeScene, monitor_cb_);
         rs.addCommandBuffer(Render::CameraEvent::Overlay, hud_cb_);
+        if (gaussian_cb_) rs.addCommandBuffer(Render::CameraEvent::Overlay, gaussian_cb_);
+        if (rt_cb_) rs.addCommandBuffer(Render::CameraEvent::Overlay, rt_cb_);
+        if (media_cb_) rs.addCommandBuffer(Render::CameraEvent::Overlay, media_cb_);
         rs.addCustomCommandBuffer(custom_cb_);
     }
 
@@ -191,6 +277,8 @@ namespace Demo
         world.addComponent<ECS::TransformComponent>(e);
         ECS::ScriptComponent sc;
         sc.script_path = path;
+        if (ResourceIO::pathExtension(path) == "js" || ResourceIO::pathExtension(path) == "mjs")
+            sc.language = ECS::ScriptLanguage::JavaScript;
         world.addComponent<ECS::ScriptComponent>(e, sc);
         return e;
     }
@@ -411,6 +499,568 @@ namespace Demo
     }
 
     //======================================================================
+    // Physics playground
+    //======================================================================
+    void DemoApp::buildPhysicsScene()
+    {
+        ECS::World &world = engine.world();
+        Render::RenderScene &scene = engine.render().scene();
+        buildMinimalRig();
+        if (auto *ctrl = world.getComponent<ECS::CameraControllerComponent>(camera_))
+        {
+            ctrl->orbit_target = Math::Vec3(0.0f, 2.0f, 0.0f);
+            ctrl->orbit_distance = 13.0f;
+            ctrl->orbit_yaw_degrees = 28.0f;
+            ctrl->orbit_pitch_degrees = 20.0f;
+        }
+        Render::RenderSettings &rs = engine.render().settings();
+        rs.ambient_intensity = 1.2f;
+        rs.ambient_color = Math::Color(0.055f, 0.06f, 0.075f);
+
+        auto makeMaterial = [&](const std::string &name, const Math::Color &color, float metallic, float roughness)
+        {
+            Render::MaterialPtr m = scene.createMaterial(name);
+            m->base_color = color;
+            m->metallic = metallic;
+            m->roughness = roughness;
+            return m;
+        };
+
+        // ---- infinite ground -----------------------------------------
+        Render::MaterialPtr ground = makeMaterial("Physics ground", Math::Color(0.16f, 0.18f, 0.22f, 1.0f), 0.08f, 0.85f);
+        ECS::Entity ground_entity = spawnMesh("PhysicsGround", Reflect::createMeshAsset("plane", 30.0f), ground,
+                                              Math::Vec3(0.0f));
+        world.addComponent<ECS::RigidBodyComponent>(ground_entity, [] { ECS::RigidBodyComponent b; b.type = ECS::BodyType::Static; return b; }());
+        world.addComponent<ECS::ColliderComponent>(ground_entity, [] { ECS::ColliderComponent c; c.shape = ECS::ColliderShape::Plane; return c; }());
+
+        // ---- box pyramid ---------------------------------------------
+        Render::MaterialPtr box_mat = makeMaterial("Physics crates", Math::Color(0.86f, 0.42f, 0.16f, 1.0f), 0.05f, 0.55f);
+        Reflect::MeshAssetPtr box_mesh = Reflect::createMeshAsset("box", 0.9f, 4);
+        const int levels = 4;
+        for (int level = 0; level < levels; ++level)
+        {
+            const int count = levels + 1 - level;
+            for (int i = 0; i < count; ++i)
+            {
+                const float x = (i - (count - 1) * 0.5f) * 0.94f;
+                const float y = 0.46f + level * 0.92f;
+                ECS::Entity e = spawnMesh("Crate_" + std::to_string(level) + "_" + std::to_string(i), box_mesh,
+                                          box_mat, Math::Vec3(x, y, 0.0f));
+                ECS::RigidBodyComponent rb;
+                rb.type = ECS::BodyType::Dynamic;
+                rb.mass = 1.4f;
+                rb.restitution = 0.12f;
+                rb.friction = 0.7f;
+                world.addComponent<ECS::RigidBodyComponent>(e, rb);
+                ECS::ColliderComponent col;
+                col.shape = ECS::ColliderShape::Box;
+                col.half_extents = Math::Vec3(0.45f);
+                world.addComponent<ECS::ColliderComponent>(e, col);
+                if (level == levels - 1 && i == 0) addLabel(e, "crates", 0.7f, Math::Color(1.0f, 0.8f, 0.4f));
+            }
+        }
+
+        // ---- bouncy spheres -----------------------------------------
+        Render::MaterialPtr ball_mat = makeMaterial("Physics balls", Math::Color(0.2f, 0.55f, 0.95f, 1.0f), 0.65f, 0.22f);
+        Reflect::MeshAssetPtr ball_mesh = Reflect::createMeshAsset("sphere", 0.7f, 32);
+        for (int i = 0; i < 8; ++i)
+        {
+            const float angle = i * 0.9f;
+            ECS::Entity e = spawnMesh("Ball_" + std::to_string(i), ball_mesh, ball_mat,
+                                      Math::Vec3(std::cos(angle) * 3.4f, 4.0f + i * 0.55f, std::sin(angle) * 3.4f));
+            ECS::RigidBodyComponent rb;
+            rb.type = ECS::BodyType::Dynamic;
+            rb.mass = 0.6f;
+            rb.restitution = 0.72f;
+            rb.friction = 0.35f;
+            world.addComponent<ECS::RigidBodyComponent>(e, rb);
+            ECS::ColliderComponent col;
+            col.shape = ECS::ColliderShape::Sphere;
+            col.radius = 0.35f;
+            world.addComponent<ECS::ColliderComponent>(e, col);
+        }
+
+        // ---- static ramp --------------------------------------------
+        Render::MaterialPtr ramp_mat = makeMaterial("Physics ramp", Math::Color(0.32f, 0.62f, 0.48f, 1.0f), 0.2f, 0.45f);
+        ECS::Entity ramp = spawnMesh("Ramp", Reflect::createMeshAsset("box", 1.0f), ramp_mat, Math::Vec3(0.0f, 0.9f, -5.2f));
+        if (auto *t = world.getComponent<ECS::TransformComponent>(ramp))
+        {
+            t->scale = Math::Vec3(6.0f, 0.25f, 3.2f);
+            t->setEulerDegrees(-16.0f, 0.0f, 0.0f);
+        }
+        ECS::RigidBodyComponent ramp_rb;
+        ramp_rb.type = ECS::BodyType::Static;
+        world.addComponent<ECS::RigidBodyComponent>(ramp, ramp_rb);
+        ECS::ColliderComponent ramp_col;
+        ramp_col.shape = ECS::ColliderShape::Box;
+        ramp_col.half_extents = Math::Vec3(0.5f);
+        world.addComponent<ECS::ColliderComponent>(ramp, ramp_col);
+
+        // ---- hinge pendulum -----------------------------------------
+        Render::MaterialPtr brass = makeMaterial("Physics brass", Math::Color(0.95f, 0.7f, 0.25f, 1.0f), 1.0f, 0.25f);
+        ECS::Entity pendulum = spawnMesh("Pendulum", Reflect::createMeshAsset("box", 1.0f), brass, Math::Vec3(4.5f, 3.2f, 0.0f));
+        if (auto *t = world.getComponent<ECS::TransformComponent>(pendulum))
+            t->scale = Math::Vec3(0.32f, 2.2f, 0.32f);
+        ECS::RigidBodyComponent prb;
+        prb.type = ECS::BodyType::Dynamic;
+        prb.mass = 2.5f;
+        prb.restitution = 0.1f;
+        prb.friction = 0.4f;
+        world.addComponent<ECS::RigidBodyComponent>(pendulum, prb);
+        ECS::ColliderComponent pcol;
+        pcol.shape = ECS::ColliderShape::Box;
+        pcol.half_extents = Math::Vec3(0.5f);
+        world.addComponent<ECS::ColliderComponent>(pendulum, pcol);
+        ECS::HingeJointComponent hinge;
+        hinge.anchor = Math::Vec3(4.5f, 5.4f, 0.0f);
+        hinge.axis = Math::Vec3(0.0f, 0.0f, 1.0f);
+        world.addComponent<ECS::HingeJointComponent>(pendulum, hinge);
+        addLabel(pendulum, "hinge", 1.5f, Math::Color(1.0f, 0.85f, 0.4f));
+
+        // ---- capsule ------------------------------------------------
+        Render::MaterialPtr capsule_mat = makeMaterial("Physics capsule", Math::Color(0.7f, 0.35f, 0.9f, 1.0f), 0.1f, 0.4f);
+        ECS::Entity capsule = spawnMesh("Capsule", Reflect::createMeshAsset("sphere", 1.0f), capsule_mat, Math::Vec3(-4.2f, 4.5f, 0.0f));
+        if (auto *t = world.getComponent<ECS::TransformComponent>(capsule))
+            t->scale = Math::Vec3(0.75f, 1.8f, 0.75f);
+        ECS::RigidBodyComponent crb;
+        crb.type = ECS::BodyType::Dynamic;
+        crb.mass = 1.2f;
+        world.addComponent<ECS::RigidBodyComponent>(capsule, crb);
+        ECS::ColliderComponent ccol;
+        ccol.shape = ECS::ColliderShape::Capsule;
+        ccol.radius = 0.38f;
+        ccol.height = 2.4f;
+        world.addComponent<ECS::ColliderComponent>(capsule, ccol);
+        addLabel(capsule, "capsule", 1.4f, Math::Color(0.8f, 0.6f, 1.0f));
+
+        // ---- trigger volume (no response, shown in the panel) --------
+        Render::MaterialPtr trigger_mat = makeMaterial("Physics trigger", Math::Color(0.15f, 1.0f, 0.55f, 0.25f), 0.0f, 0.6f);
+        trigger_mat->shading = Render::MaterialShading::Unlit;
+        trigger_mat->blend = Render::MaterialBlend::Transparent;
+        trigger_mat->depth_write = false;
+        ECS::Entity trigger = spawnMesh("Trigger", Reflect::createMeshAsset("sphere", 2.0f), trigger_mat,
+                                        Math::Vec3(-4.6f, 1.2f, 3.8f));
+        ECS::RigidBodyComponent trb;
+        trb.type = ECS::BodyType::Static;
+        world.addComponent<ECS::RigidBodyComponent>(trigger, trb);
+        ECS::ColliderComponent tcol;
+        tcol.shape = ECS::ColliderShape::Sphere;
+        tcol.radius = 1.0f;
+        tcol.is_trigger = true;
+        world.addComponent<ECS::ColliderComponent>(trigger, tcol);
+        addLabel(trigger, "trigger", 1.3f, Math::Color(0.4f, 1.0f, 0.7f));
+
+        Physics::PhysicsSettings &ps = engine.physics().settings();
+        ps.enabled = true;
+        ps.debug_draw = true;
+        ps.solver_iterations = 10;
+        ps.sleeping = true;
+        engine.physics().setPaused(false);
+        physics_debug_ = true;
+        GEN_LOG_INFO("[Demo] physics playground: %zu bodies", engine.physics().bodyCount());
+    }
+
+    //======================================================================
+    // Gaussian splat viewer
+    //======================================================================
+    void DemoApp::buildGaussianScene()
+    {
+        ECS::World &world = engine.world();
+        Render::RenderSettings &rs = engine.render().settings();
+        rs.show_skybox = false;
+        rs.use_ibl = false;
+        rs.ambient_intensity = 0.0f;
+        rs.ambient_color = Math::Color(0.0f, 0.0f, 0.0f);
+        rs.tonemap_mode = Render::TonemapMode::Aces;
+        rs.exposure = 1.0f;
+        rs.gamma = 2.2f;
+
+        camera_ = world.createEntity("SplatCamera");
+        ECS::TransformComponent t;
+        t.position = Math::Vec3(0.0f, 1.6f, 6.0f);
+        world.addComponent<ECS::TransformComponent>(camera_, t);
+        ECS::CameraComponent cam;
+        cam.fov_degrees = 45.0f;
+        cam.far_plane = 500.0f;
+        world.addComponent<ECS::CameraComponent>(camera_, cam);
+        ECS::CameraControllerComponent ctrl;
+        ctrl.orbit_target = Math::Vec3(0.0f, 1.2f, 0.0f);
+        ctrl.orbit_distance = 6.0f;
+        ctrl.orbit_pitch_degrees = 8.0f;
+        ctrl.orbit_yaw_degrees = 0.0f;
+        world.addComponent<ECS::CameraControllerComponent>(camera_, ctrl);
+
+        sun_ = world.createEntity("SplatFill");
+        world.addComponent<ECS::TransformComponent>(sun_);
+        ECS::LightComponent light;
+        light.type = ECS::LightType::Directional;
+        light.intensity = 1.5f;
+        world.addComponent<ECS::LightComponent>(sun_, light);
+
+        if (gaussian_path_.empty()) gaussian_path_ = asset("splats/genesis_gaussians.ply");
+        std::snprintf(gaussian_path_input_, sizeof(gaussian_path_input_), "%s", gaussian_path_.c_str());
+        std::string error;
+        if (!gaussian_cloud_.loadPly(gaussian_path_, &error))
+            GEN_LOG_WARN("[Demo] gaussian splats unavailable: %s", error.c_str());
+
+        if (gaussian_cloud_.loaded())
+        {
+            const Math::Vec3 center = (gaussian_cloud_.bounds().minPoint + gaussian_cloud_.bounds().maxPoint) * 0.5f;
+            const float extent = Math::length(gaussian_cloud_.bounds().maxPoint - gaussian_cloud_.bounds().minPoint);
+            if (auto *c = world.getComponent<ECS::CameraControllerComponent>(camera_))
+            {
+                c->orbit_target = center;
+                c->orbit_distance = std::max(2.5f, extent * 1.25f);
+            }
+        }
+        if (!gaussian_cb_) gaussian_cb_ = std::make_shared<Render::CommandBuffer>("gaussian_splats");
+        gaussian_cb_->clear();
+        GEN_LOG_INFO("[Demo] gaussian scene: %zu splats", gaussian_cloud_.count());
+    }
+
+    //======================================================================
+    // Packages / mini-game
+    //======================================================================
+    void DemoApp::refreshPackageList()
+    {
+        package_files_.clear();
+        if (DIR *dir = opendir(asset("packages").c_str()))
+        {
+            while (dirent *ent = readdir(dir))
+            {
+                std::string name = ent->d_name;
+                if (name.size() > 5 && name.rfind(".gpkg") == name.size() - 5)
+                    package_files_.push_back(asset("packages/" + name));
+            }
+            closedir(dir);
+        }
+        std::sort(package_files_.begin(), package_files_.end());
+        if (package_files_.empty()) GEN_LOG_WARN("[Demo] no .gpkg packages found under %s", asset("packages").c_str());
+    }
+
+    bool DemoApp::loadPackage(const std::string &path, std::string *error)
+    {
+        engine.device()->waitIdle();
+        std::string err;
+        AssetPackagePtr package = engine.loadAssetPackage(path, &err);
+        if (!package)
+        {
+            package_status_ = "load failed: " + err;
+            if (error) *error = err;
+            return false;
+        }
+        package_manifest_ = package->manifestJson();
+        for (size_t i = 0; i < package_files_.size(); ++i)
+            if (ResourceIO::pathFilename(package_files_[i]) == ResourceIO::pathFilename(path))
+                package_index_ = (int)i;
+        package_status_ = "loaded '" + package->name() + "' (" + std::to_string(package->entries().size()) + " files)";
+        return true;
+    }
+
+    void DemoApp::buildFromActivePackage()
+    {
+        AssetPackagePtr package = engine.activePackage();
+        if (!package)
+        {
+            package_status_ = "no package loaded";
+            buildMinimalRig();
+            return;
+        }
+        std::string scene_rel;
+        try
+        {
+            nlohmann::json manifest = nlohmann::json::parse(package->manifestJson());
+            if (manifest.contains("scene") && manifest["scene"].is_string())
+                scene_rel = manifest["scene"].get<std::string>();
+            else if (manifest.contains("entry_scene") && manifest["entry_scene"].is_string())
+                scene_rel = manifest["entry_scene"].get<std::string>();
+        }
+        catch (const std::exception &)
+        {
+        }
+        if (scene_rel.empty())
+        {
+            for (const PackageEntry &entry : package->entries())
+                if (entry.path.rfind("scenes/", 0) == 0 &&
+                    entry.path.size() > 11 && entry.path.rfind(".scene.json") == entry.path.size() - 11)
+                {
+                    scene_rel = entry.path;
+                    break;
+                }
+        }
+        if (scene_rel.empty())
+        {
+            package_status_ = "package has no scene entry";
+            buildMinimalRig();
+            return;
+        }
+        const std::string root = engine.packageRoot();
+        const std::string scene_path = ResourceIO::joinPath(root, scene_rel);
+        Scene::LoadResult result = Scene::loadFromFile(engine, scene_path, root);
+        if (!result.ok)
+        {
+            package_status_ = "scene load failed: " + result.error;
+            buildMinimalRig();
+            return;
+        }
+        package_scene_loaded_ = true;
+        package_status_ = "scene '" + scene_rel + "': " + std::to_string(result.entities) + " entities, " +
+                          std::to_string(result.materials) + " materials, " + std::to_string(result.scripts) +
+                          " scripts";
+        camera_ = engine.world().findEntity("MainCamera");
+        if (!camera_.valid()) camera_ = engine.world().findEntity("Camera");
+        game_status_ = package_status_;
+    }
+
+    void DemoApp::buildGameScene()
+    {
+        buildMinimalRig(); // fallback rig if the package is missing
+        // Remove the fallback rig pieces once the package scene is loaded.
+        std::string path = options.package.empty() ? asset("packages/cascade.gpkg") : options.package;
+        std::string error;
+        if (!loadPackage(path, &error))
+        {
+            game_status_ = "package missing: " + path + " (run tools/genesis_pack.py)";
+            GEN_LOG_ERROR("[Demo] %s", game_status_.c_str());
+            buildPhysicsScene();
+            return;
+        }
+        // Clear the fallback rig before adding the packaged scene.
+        std::vector<ECS::Entity> all = engine.world().entities();
+        for (ECS::Entity e : all)
+            if (engine.world().isAlive(e)) engine.world().destroyEntity(e);
+        buildFromActivePackage();
+        game_status_ = "cascade mini-game loaded from " + ResourceIO::pathFilename(path);
+    }
+
+    //======================================================================
+    // Animation scene (2D sprite sheet + 3D compute vertex animation)
+    //======================================================================
+    void DemoApp::buildAnimationScene()
+    {
+        ECS::World &world = engine.world();
+        Render::RenderScene &scene = engine.render().scene();
+        buildMinimalRig();
+        if (auto *ctrl = world.getComponent<ECS::CameraControllerComponent>(camera_))
+        {
+            ctrl->orbit_target = Math::Vec3(0.0f, 1.2f, 0.0f);
+            ctrl->orbit_distance = 8.0f;
+            ctrl->orbit_yaw_degrees = 30.0f;
+            ctrl->orbit_pitch_degrees = 18.0f;
+        }
+        Render::RenderSettings &settings = engine.render().settings();
+        settings.ambient_intensity = 1.3f;
+        settings.ambient_color = Math::Color(0.05f, 0.06f, 0.08f);
+
+        Render::MaterialPtr anim_mat = scene.createMaterial("Animation surface");
+        anim_mat->base_color = Math::Color(0.25f, 0.65f, 0.95f, 1.0f);
+        anim_mat->metallic = 0.65f;
+        anim_mat->roughness = 0.22f;
+        anim_mat->emissive = Math::Color(0.05f, 0.2f, 0.35f);
+        anim_mat->emissive_strength = 1.5f;
+
+        // 3D compute-vertex-animated torus.
+        anim_vertex_ = spawnMesh("VertexAnimatedTorus", Reflect::createMeshAsset("torus", 2.2f, 64), anim_mat,
+                                 Math::Vec3(0.0f, 1.8f, 0.0f));
+        if (auto *t = world.getComponent<ECS::TransformComponent>(anim_vertex_))
+            t->setEulerDegrees(90.0f, 0.0f, 0.0f);
+        ECS::VertexAnimationComponent va;
+        va.amplitude = vertex_amplitude_;
+        va.frequency = vertex_frequency_;
+        va.speed = vertex_speed_;
+        world.addComponent<ECS::VertexAnimationComponent>(anim_vertex_, va);
+        addLabel(anim_vertex_, "compute vertex animation", 1.6f, Math::Color(0.6f, 0.9f, 1.0f));
+
+        // 3D sprite animation projected to screen.
+        anim_sprite_ = world.createEntity("SpriteAnimation3D");
+        ECS::TransformComponent st;
+        st.position = Math::Vec3(3.0f, 2.0f, 0.0f);
+        world.addComponent<ECS::TransformComponent>(anim_sprite_, st);
+        ECS::SpriteAnimationComponent sprite;
+        sprite.texture = asset("textures/sprite_sheet.png");
+        sprite.columns = 4;
+        sprite.rows = 2;
+        sprite.frame_count = 8;
+        sprite.fps = sprite_fps_;
+        sprite.size = 1.1f;
+        sprite.screen_space = false;
+        world.addComponent<ECS::SpriteAnimationComponent>(anim_sprite_, sprite);
+
+        // HUD sprite: the same sheet in screen space.
+        ECS::Entity hud_sprite = world.createEntity("SpriteAnimation2D");
+        world.addComponent<ECS::TransformComponent>(hud_sprite);
+        ECS::SpriteAnimationComponent hud;
+        hud.texture = sprite.texture;
+        hud.columns = 4;
+        hud.rows = 2;
+        hud.frame_count = 8;
+        hud.fps = sprite_fps_;
+        hud.size = 160.0f;
+        hud.screen_position = Math::Vec3(36.0f, 500.0f, 0.0f);
+        world.addComponent<ECS::SpriteAnimationComponent>(hud_sprite, hud);
+
+        sprite_playing_ = true;
+        vertex_animation_enabled_ = true;
+        GEN_LOG_INFO("[Demo] animation scene: sprite sheets + compute vertex animation (%s)",
+                     engine.compute().supportsHardwareCompute() ? "compute enabled" : "compute unavailable");
+    }
+
+    //======================================================================
+    // Ray tracing scene
+    //======================================================================
+    void DemoApp::buildRayTracingScene()
+    {
+        ECS::World &world = engine.world();
+        buildMinimalRig();
+        if (auto *ctrl = world.getComponent<ECS::CameraControllerComponent>(camera_))
+        {
+            ctrl->orbit_target = Math::Vec3(0.0f, 1.1f, 0.0f);
+            ctrl->orbit_distance = 8.0f;
+            ctrl->orbit_yaw_degrees = 15.0f;
+            ctrl->orbit_pitch_degrees = 12.0f;
+        }
+        Render::RenderSettings &settings = engine.render().settings();
+        settings.show_skybox = false;
+        settings.use_ibl = false;
+        settings.ambient_intensity = 0.0f;
+        settings.ambient_color = Math::Color(0.0f, 0.0f, 0.0f);
+
+        rt_scene_.clear();
+        const int count = 8;
+        for (int i = 0; i < count; ++i)
+        {
+            API::RTSphere sphere;
+            const float a = (float)i / (float)count * Math::TWO_PI;
+            const float ring = 2.6f;
+            sphere.center = Math::Vec3(std::cos(a) * ring, 0.7f + (float)(i % 3) * 0.45f,
+                                       std::sin(a) * ring - 1.0f);
+            sphere.radius = 0.5f + (float)(i % 3) * 0.12f;
+            sphere.color = Math::Color(0.2f + 0.08f * (float)i, 0.45f + 0.05f * (float)(i % 4),
+                                       0.85f - 0.07f * (float)i, 1.0f);
+            sphere.metallic = (i % 3 == 0) ? 1.0f : 0.0f;
+            rt_scene_.push_back(sphere);
+        }
+        engine.rayTracing().setScene(rt_scene_);
+        rt_settings_.width = 320;
+        rt_settings_.height = 180;
+        rt_settings_.samples = 2;
+        rt_auto_trace_ = true;
+        rt_trace_requested_ = true;
+        if (!rt_cb_) rt_cb_ = std::make_shared<Render::CommandBuffer>("ray_tracing_overlay");
+        rt_cb_->clear();
+        GEN_LOG_INFO("[Demo] ray tracing scene: %zu spheres, backend %s", rt_scene_.size(),
+                     engine.rayTracing().backendName().c_str());
+    }
+
+    //======================================================================
+    // Media playback scene (libavcodec + SDL audio, no subprocess)
+    //======================================================================
+    void DemoApp::buildMediaScene()
+    {
+        buildMinimalRig();
+        Render::RenderSettings &settings = engine.render().settings();
+        settings.show_skybox = false;
+        settings.use_ibl = false;
+        settings.ambient_intensity = 0.0f;
+        settings.ambient_color = Math::Color(0.0f, 0.0f, 0.0f);
+        if (!media_cb_) media_cb_ = std::make_shared<Render::CommandBuffer>("media_overlay");
+        media_cb_->clear();
+        if (media_path_[0] == '\0')
+            std::snprintf(media_path_, sizeof(media_path_), "%s", asset("media/sample.mp4").c_str());
+        media_player_ = engine.encoderDecoder().createPlayer();
+        if (!media_player_)
+        {
+            media_status_ = "EncoderDecoder API unavailable";
+            return;
+        }
+        std::string error;
+        if (!media_player_->open(media_path_, true, &error))
+        {
+            media_status_ = "open failed: " + error;
+            GEN_LOG_ERROR("[Demo] media open failed: %s", error.c_str());
+            return;
+        }
+        media_player_->setVolume(media_volume_);
+        media_player_->play();
+        media_serial_ = 0;
+        media_status_ = "playing " + std::string(media_path_);
+        GEN_LOG_INFO("[Demo] media scene: %s", media_status_.c_str());
+    }
+
+    void DemoApp::updateMedia(float dt)
+    {
+        if (!media_player_ || scene_ != SceneKind::Media) return;
+        media_player_->update(dt);
+        const int width = media_player_->videoWidth();
+        const int height = media_player_->videoHeight();
+        const uint8_t *pixels = media_player_->videoPixels();
+        if (pixels && width > 0 && height > 0 && media_player_->videoSerial() != media_serial_)
+        {
+            if (!media_texture_ || media_texture_width_ != width || media_texture_height_ != height)
+            {
+                if (media_texture_) engine.device()->destroyTexture(media_texture_);
+                RHI::TextureDesc desc;
+                desc.format = RHI::PixelFormat::RGBA8_UNORM;
+                desc.width = (uint32_t)width;
+                desc.height = (uint32_t)height;
+                desc.usage = (uint32_t)RHI::TextureUsageFlagBits::Sampled |
+                             (uint32_t)RHI::TextureUsageFlagBits::TransferDst;
+                desc.name = "media_video";
+                media_texture_ = engine.device()->createTexture(desc);
+                media_texture_width_ = width;
+                media_texture_height_ = height;
+                if (!media_sampler_)
+                {
+                    RHI::SamplerDesc sd;
+                    sd.min_filter = RHI::FilterMode::Linear;
+                    sd.mag_filter = RHI::FilterMode::Linear;
+                    sd.address_u = RHI::AddressMode::ClampToEdge;
+                    sd.address_v = RHI::AddressMode::ClampToEdge;
+                    sd.name = "media_sampler";
+                    media_sampler_ = engine.device()->createSampler(sd);
+                }
+            }
+            if (media_texture_)
+                engine.device()->writeTexture(media_texture_, pixels, (uint64_t)width * height * 4, (uint32_t)width,
+                                              (uint32_t)height);
+            media_serial_ = media_player_->videoSerial();
+        }
+
+        media_cb_->clear();
+        const float target_w = (float)(engine.render().hdrTarget() ? engine.render().hdrTarget()->width() : 1280u);
+        const float target_h = (float)(engine.render().hdrTarget() ? engine.render().hdrTarget()->height() : 720u);
+        media_cb_->drawRect(0, 0, target_w, target_h, Math::Color(0.01f, 0.01f, 0.015f, 1.0f));
+        if (media_texture_ && width > 0 && height > 0)
+        {
+            const float aspect = (float)width / (float)height;
+            float w = target_w * 0.86f;
+            float h = w / aspect;
+            if (h > target_h * 0.82f)
+            {
+                h = target_h * 0.82f;
+                w = h * aspect;
+            }
+            const float x = (target_w - w) * 0.5f;
+            const float y = (target_h - h) * 0.5f;
+            media_cb_->drawSprite(media_texture_, media_sampler_, x, y, w, h, Math::Vec2(0, 1), Math::Vec2(1, 0),
+                                  Math::Color(1, 1, 1, 1));
+        }
+        const float s = target_h / 720.0f;
+        const Media::MediaInfo &info = media_player_->info();
+        media_cb_->drawRect(16 * s, 16 * s, 760 * s, 64 * s, Math::Color(0, 0, 0, 0.62f));
+        media_cb_->drawText("MediaPlayer (libavcodec, in-process)  |  " + info.video_codec + " " +
+                                std::to_string(info.width) + "x" + std::to_string(info.height) + "  |  audio " +
+                                info.audio_codec + " " + std::to_string(info.sample_rate) + " Hz  |  " +
+                                std::to_string(media_player_->position()).substr(0, 5) + " / " +
+                                std::to_string(media_player_->duration()).substr(0, 5) + " s",
+                            30 * s, 24 * s, 18 * s, Math::Color(0.7f, 0.9f, 1.0f), Text::TextAlign::Left, 0.15f);
+        media_cb_->drawText(media_player_->playing() ? "playing" : "paused",
+                            30 * s, 50 * s, 15 * s,
+                            media_player_->playing() ? Math::Color(0.4f, 1.0f, 0.6f) : Math::Color(1.0f, 0.6f, 0.3f),
+                            Text::TextAlign::Left, 0.1f);
+    }
+
+    //======================================================================
     // Per frame
     //======================================================================
     void DemoApp::tick(float dt)
@@ -420,6 +1070,9 @@ namespace Demo
         time_ += dt;
         if (preview_rotate_) preview_yaw_ += 0.6f * dt;
         animate(dt);
+        if (scene_ == SceneKind::Gaussian && gaussian_auto_orbit_)
+            engine.world().each<ECS::CameraControllerComponent>(
+                [dt](ECS::Entity, ECS::CameraControllerComponent &c) { c.orbit_yaw_degrees += dt * 9.0f; });
         // Scripts may switch the pipeline too: only write it when the demo toggle changes.
         Render::RenderSettings &s = engine.render().settings();
         if (custom_pipeline_ != applied_custom_)
@@ -435,6 +1088,116 @@ namespace Demo
         recordMonitor();
         recordCustomPipeline();
         recordTextLab();
+        recordPhysicsDebug();
+        recordGaussian();
+        recordRayTracing();
+        updateMedia(dt);
+        if (codec_capture_requested_)
+        {
+            codec_capture_requested_ = false;
+            std::vector<uint8_t> rgba;
+            uint32_t w = 0, h = 0;
+            if (engine.captureFrame(rgba, w, h))
+            {
+                API::FrameImage frame;
+                frame.width = w;
+                frame.height = h;
+                frame.rgba = std::move(rgba);
+                std::vector<uint8_t> png;
+                std::string error;
+                if (engine.encoderDecoder().encodeFrame(frame, png, API::Codec::PNG, &error))
+                {
+                    ResourceIO::writeFile("/tmp/genesis_codec_ui_frame.png", png.data(), png.size());
+                    codec_status_ = "captured frame -> /tmp/genesis_codec_ui_frame.png (" + std::to_string(w) +
+                                    "x" + std::to_string(h) + ")";
+                }
+                else codec_status_ = "PNG encode failed: " + error;
+            }
+            else codec_status_ = "frame capture failed";
+        }
+    }
+
+    void DemoApp::recordPhysicsDebug()
+    {
+        engine.physics().settings().debug_draw = physics_debug_;
+        if (!physics_debug_) return;
+        if (scene_ == SceneKind::Physics || scene_ == SceneKind::Game)
+            engine.physics().drawDebug(engine.render());
+    }
+
+    void DemoApp::recordGaussian()
+    {
+        if (!gaussian_cb_) return;
+        gaussian_cb_->clear();
+        if (scene_ != SceneKind::Gaussian || !gaussian_cloud_.loaded()) return;
+        gaussian_renderer_.record(engine.render(), *gaussian_cb_, gaussian_cloud_, gaussian_settings_);
+        const auto &stats = gaussian_renderer_.stats();
+        const float s = engine.render().hdrTarget() ? engine.render().hdrTarget()->height() / 720.0f : 1.0f;
+        gaussian_cb_->drawRect(16.0f * s, 16.0f * s, 520.0f * s, 58.0f * s, Math::Color(0.01f, 0.01f, 0.02f, 0.65f));
+        gaussian_cb_->drawText("3D Gaussian Splatting  |  " + std::to_string(stats.drawn) + " splats, depth sorted",
+                               30.0f * s, 24.0f * s, 20.0f * s, Math::Color(0.75f, 0.9f, 1.0f), Text::TextAlign::Left, 0.15f);
+        gaussian_cb_->drawText("CPU projection + sort -> RHI alpha quads (all three backends)",
+                               30.0f * s, 48.0f * s, 15.0f * s, Math::Color(0.65f, 0.75f, 0.9f), Text::TextAlign::Left, 0.1f);
+    }
+
+    void DemoApp::recordRayTracing()
+    {
+        if (!rt_cb_) return;
+        rt_cb_->clear();
+        if (scene_ != SceneKind::RayTracing) return;
+        API::RayTracingAPI &rt = engine.rayTracing();
+        if (!rt.available())
+        {
+            rt_cb_->drawText("Ray tracing API unavailable", 24, 24, 24, Math::Color(1, 0.4, 0.4));
+            return;
+        }
+        if (rt_auto_trace_ || rt_trace_requested_)
+        {
+            const Render::CameraState &camera = engine.render().camera();
+            API::RTCamera rt_camera;
+            rt_camera.eye = camera.position;
+            rt_camera.forward = camera.forward;
+            rt_camera.right = camera.right;
+            rt_camera.up = camera.up;
+            rt_camera.fov_degrees = camera.fov_degrees;
+            const Render::RenderTexturePtr target = engine.render().hdrTarget();
+            rt_camera.aspect = target ? (float)target->width() / (float)std::max(1u, target->height()) : 16.0f / 9.0f;
+            rt.setScene(rt_scene_);
+            const bool ok = rt.trace(rt_camera, rt_settings_);
+            rt_last_ms_ = rt.stats().trace_ms;
+            rt_status_ = ok ? (rt.stats().gpu ? "GPU compute trace" : "CPU fallback trace") : "trace failed";
+            rt_trace_requested_ = false;
+        }
+
+        const float width = (float)(engine.render().hdrTarget() ? engine.render().hdrTarget()->width() : 1280);
+        const float height = (float)(engine.render().hdrTarget() ? engine.render().hdrTarget()->height() : 720);
+        rt_cb_->drawRect(0, 0, width, height, Math::Color(0.01f, 0.01f, 0.02f, 1.0f));
+        if (rt.outputTexture() && !rt.pixels().empty())
+        {
+            const float src_aspect = (float)rt.stats().width / (float)std::max(1u, rt.stats().height);
+            float w = width * 0.82f;
+            float h = w / src_aspect;
+            if (h > height * 0.82f)
+            {
+                h = height * 0.82f;
+                w = h * src_aspect;
+            }
+            const float x = (width - w) * 0.5f;
+            const float y = (height - h) * 0.5f;
+            // The image is uploaded top-down: flip V in the UV rect.
+            rt_cb_->drawSprite(rt.outputTexture(), rt.sampler(), x, y, w, h, Math::Vec2(0, 1),
+                               Math::Vec2(1, 0), Math::Color(1, 1, 1, 1));
+        }
+        const float s = height / 720.0f;
+        rt_cb_->drawRect(16 * s, 16 * s, 620 * s, 62 * s, Math::Color(0, 0, 0, 0.62f));
+        rt_cb_->drawText("Ray Tracing API  |  " + rt.backendName() + "  |  " +
+                             std::to_string(rt.stats().width) + "x" + std::to_string(rt.stats().height) +
+                             "  " + std::to_string(rt.stats().samples) + " spp  |  " +
+                             std::to_string(rt_last_ms_).substr(0, 5) + " ms",
+                         30 * s, 24 * s, 19 * s, Math::Color(0.7f, 0.9f, 1.0f), Text::TextAlign::Left, 0.15f);
+        rt_cb_->drawText("spheres " + std::to_string(rt_scene_.size()) +
+                             "   shadows + one reflection bounce   (shader: rt/raytrace.comp)",
+                         30 * s, 50 * s, 15 * s, Math::Color(0.75f, 0.8f, 0.9f), Text::TextAlign::Left, 0.1f);
     }
 
     void DemoApp::animate(float dt)

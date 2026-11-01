@@ -327,6 +327,8 @@ namespace Genesis
             for (auto &m : meshes_)
             {
                 if (m->vertex_buffer) device_->destroyBuffer(m->vertex_buffer);
+                if (m->animated_vertex_buffer && m->animated_vertex_buffer != m->vertex_buffer)
+                    device_->destroyBuffer(m->animated_vertex_buffer);
                 if (m->index_buffer) device_->destroyBuffer(m->index_buffer);
             }
             meshes_.clear();
@@ -345,7 +347,10 @@ namespace Genesis
 
             RHI::BufferDesc vbd;
             vbd.size = (uint64_t)mesh.vertices.size() * sizeof(Vertex);
-            vbd.usage = (uint32_t)RHI::BufferUsageFlagBits::Vertex | (uint32_t)RHI::BufferUsageFlagBits::TransferDst;
+            // Storage is required so compute kernels can animate the stream.
+            vbd.usage = (uint32_t)RHI::BufferUsageFlagBits::Vertex |
+                        (uint32_t)RHI::BufferUsageFlagBits::Storage |
+                        (uint32_t)RHI::BufferUsageFlagBits::TransferDst;
             vbd.memory_usage = RHI::MemoryUsage::GpuOnly;
             vbd.initial_data = mesh.vertices.data();
             vbd.initial_data_size = vbd.size;

@@ -1,0 +1,778 @@
+{
+  "name": "Cascade",
+  "render": {
+    "tonemap": "aces",
+    "exposure": 1.2,
+    "gamma": 2.2,
+    "ambient": [
+      0.035,
+      0.045,
+      0.06
+    ],
+    "ambient_intensity": 1.1,
+    "skybox": true,
+    "ibl": true,
+    "shading": "cook_torrance",
+    "frustum_culling": true,
+    "text_components": true
+  },
+  "environment": {
+    "hdr": "textures/small_equirect.hdr",
+    "intensity": 1.0,
+    "skybox": true,
+    "ibl": true,
+    "rotation": 140
+  },
+  "physics": {
+    "gravity": [
+      0,
+      -9.81,
+      0
+    ],
+    "iterations": 12,
+    "fixed_timestep": 0.008333,
+    "debug_draw": false,
+    "sleeping": true
+  },
+  "material_files": [
+    "materials/platform.material.json",
+    "materials/crate.material.json",
+    "materials/ball.material.json",
+    "materials/pendulum.material.json",
+    "materials/trigger.material.json"
+  ],
+  "entities": [
+    {
+      "name": "MainCamera",
+      "transform": {
+        "position": [
+          0,
+          7,
+          15
+        ]
+      },
+      "components": {
+        "camera": {
+          "fov": 52,
+          "far": 300
+        },
+        "controller": {
+          "mode": "orbit",
+          "target": [
+            0,
+            2.0,
+            0
+          ],
+          "distance": 16,
+          "yaw": 0,
+          "pitch": 22
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "transform": {
+        "euler": [
+          -55,
+          25,
+          0
+        ]
+      },
+      "components": {
+        "light": {
+          "type": "directional",
+          "intensity": 3.4,
+          "color": [
+            1.0,
+            0.94,
+            0.85
+          ]
+        }
+      }
+    },
+    {
+      "name": "Rim",
+      "transform": {
+        "position": [
+          -5,
+          4,
+          -6
+        ]
+      },
+      "components": {
+        "light": {
+          "type": "point",
+          "intensity": 22,
+          "range": 22,
+          "color": [
+            0.35,
+            0.7,
+            1.0
+          ]
+        }
+      }
+    },
+    {
+      "name": "Platform",
+      "transform": {
+        "position": [
+          0,
+          0.5,
+          0
+        ],
+        "scale": [
+          10,
+          1,
+          8
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 1.0
+      },
+      "material": "Platform",
+      "components": {
+        "rigidbody": {
+          "type": "static",
+          "friction": 0.8
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        }
+      }
+    },
+    {
+      "name": "Target_1",
+      "transform": {
+        "position": [
+          -2.0,
+          1.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_2",
+      "transform": {
+        "position": [
+          -1.0,
+          1.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_3",
+      "transform": {
+        "position": [
+          0.0,
+          1.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_4",
+      "transform": {
+        "position": [
+          1.0,
+          1.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_5",
+      "transform": {
+        "position": [
+          2.0,
+          1.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_6",
+      "transform": {
+        "position": [
+          -1.5,
+          2.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_7",
+      "transform": {
+        "position": [
+          -0.5,
+          2.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_8",
+      "transform": {
+        "position": [
+          0.5,
+          2.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_9",
+      "transform": {
+        "position": [
+          1.5,
+          2.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_10",
+      "transform": {
+        "position": [
+          -1.0,
+          3.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_11",
+      "transform": {
+        "position": [
+          0.0,
+          3.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Target_12",
+      "transform": {
+        "position": [
+          1.0,
+          3.55,
+          0.0
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 0.92
+      },
+      "material": "Crate",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 0.9,
+          "restitution": 0.12,
+          "friction": 0.65
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.46,
+            0.46,
+            0.46
+          ]
+        },
+        "tag": {
+          "tag": "target",
+          "layer": 1
+        },
+        "text": {
+          "text": "",
+          "size": 0.16,
+          "offset": [
+            0,
+            0.7,
+            0
+          ],
+          "visible": false
+        }
+      }
+    },
+    {
+      "name": "Pendulum",
+      "transform": {
+        "position": [
+          -4.2,
+          3.6,
+          2.5
+        ],
+        "scale": [
+          0.35,
+          2.4,
+          0.35
+        ]
+      },
+      "mesh": {
+        "kind": "box",
+        "size": 1.0
+      },
+      "material": "Pendulum",
+      "components": {
+        "rigidbody": {
+          "type": "dynamic",
+          "mass": 3.0,
+          "restitution": 0.2
+        },
+        "collider": {
+          "shape": "box",
+          "half_extents": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        },
+        "hinge": {
+          "anchor": [
+            -4.2,
+            5.8,
+            2.5
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "enable_limit": true,
+          "min_angle": -80,
+          "max_angle": 80
+        }
+      }
+    },
+    {
+      "name": "BonusTrigger",
+      "transform": {
+        "position": [
+          4.6,
+          1.4,
+          2.4
+        ]
+      },
+      "mesh": {
+        "kind": "sphere",
+        "size": 1.6
+      },
+      "material": "Trigger",
+      "components": {
+        "rigidbody": {
+          "type": "static"
+        },
+        "collider": {
+          "shape": "sphere",
+          "radius": 0.8,
+          "is_trigger": true
+        },
+        "tag": {
+          "tag": "bonus",
+          "layer": 2
+        }
+      }
+    },
+    {
+      "name": "GameScript",
+      "components": {
+        "script": {
+          "path": "scripts/cascade.js",
+          "language": "js"
+        }
+      }
+    }
+  ]
+}

@@ -54,4 +54,29 @@
 #define GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE 0x8D56
 #endif
 
+// OpenGL 4.3 compute / SSBO constants.  Apple's GL 4.1 headers do not have
+// them; the symbols are still declared so that the backend compiles, while
+// dispatch reports that compute is unavailable on that platform.
+#ifndef GL_COMPUTE_SHADER
+#define GL_COMPUTE_SHADER 0x91B9
+#endif
+#ifndef GL_SHADER_STORAGE_BUFFER
+#define GL_SHADER_STORAGE_BUFFER 0x90D2
+#endif
+#ifndef GL_SHADER_STORAGE_BARRIER_BIT
+#define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
+#endif
+#ifndef GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT
+#define GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT 0x00000001
+#endif
+#ifndef GL_BUFFER_UPDATE_BARRIER_BIT
+#define GL_BUFFER_UPDATE_BARRIER_BIT 0x00000200
+#endif
+#ifndef GL_TRANSFER_SRC_BARRIER_BIT
+#define GL_TRANSFER_SRC_BARRIER_BIT 0x00000400
+#endif
+#ifndef GL_TRANSFER_DST_BARRIER_BIT
+#define GL_TRANSFER_DST_BARRIER_BIT 0x00000800
+#endif
+
 #endif /* __GENESIS_GL_LOADER_HPP__ */

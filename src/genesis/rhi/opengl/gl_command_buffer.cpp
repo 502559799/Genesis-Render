@@ -278,9 +278,20 @@ namespace Genesis
                             if (dynamic_offsets && dyn_index < offset_count)
                                 offset += dynamic_offsets[dyn_index++];
                         }
-                        GLuint block_index = glUniformBlockIndex(binding->set, binding->binding);
-                        glBindBufferRange(GL_UNIFORM_BUFFER, block_index, entry.buffer->id(),
-                                          (GLintptr)offset, (GLsizeiptr)std::min<uint64_t>(range, entry.buffer->size() - offset));
+                        if (entry.type == ResourceType::StorageBuffer || entry.type == ResourceType::StorageBufferDynamic)
+                        {
+                            GLuint storage_index = glStorageBlockIndex(binding->set, binding->binding);
+                            glBindBufferRange(GL_SHADER_STORAGE_BUFFER, storage_index, entry.buffer->id(),
+                                              (GLintptr)offset,
+                                              (GLsizeiptr)std::min<uint64_t>(range, entry.buffer->size() - offset));
+                        }
+                        else
+                        {
+                            GLuint block_index = glUniformBlockIndex(binding->set, binding->binding);
+                            glBindBufferRange(GL_UNIFORM_BUFFER, block_index, entry.buffer->id(),
+                                              (GLintptr)offset,
+                                              (GLsizeiptr)std::min<uint64_t>(range, entry.buffer->size() - offset));
+                        }
                     }
                     else if (resourceTypeIsImage(entry.type))
                     {
@@ -365,8 +376,34 @@ namespace Genesis
 
         void GLCommandBuffer::dispatch(uint32_t group_x, uint32_t group_y, uint32_t group_z)
         {
-            GEN_LOG_ERROR("[GL] compute shaders are not supported by the OpenGL 4.1 backend (dispatch ignored)");
+            // Compute requires GL 4.3.  The GL backend requests a 4.1 core
+            // context but drivers may return a higher version; check the
+            // function pointer so old drivers fail loudly instead of crashing.
+#if defined(__APPLE__)
+            // Apple caps OpenGL at 4.1 core; compute is provided by Metal.
             (void)group_x; (void)group_y; (void)group_z;
+            GEN_LOG_ERROR("[GL] compute dispatch requires GL 4.3 (macOS OpenGL caps at 4.1; use Metal)");
+            return;
+#else
+            glDispatchCompute(group_x, group_y, group_z);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
+                            GL_BUFFER_UPDATE_BARRIER_BIT | GL_TRANSFER_SRC_BARRIER_BIT |
+                            GL_TRANSFER_DST_BARRIER_BIT);
+            if (validating()) checkError("dispatch");
+#endif
+        }
+
+        void GLCommandBuffer::bufferBarrier(RHIBuffer *buffer, BufferAccess before, BufferAccess after)
+        {
+            (void)buffer;
+            (void)before;
+            (void)after;
+#if !defined(__APPLE__)
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
+                            GL_BUFFER_UPDATE_BARRIER_BIT | GL_TRANSFER_SRC_BARRIER_BIT |
+                            GL_TRANSFER_DST_BARRIER_BIT);
+#endif
+            if (validating()) checkError("bufferBarrier");
         }
 
         void GLCommandBuffer::copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset, RHIBuffer *dst, uint64_t dst_offset, uint64_t size)

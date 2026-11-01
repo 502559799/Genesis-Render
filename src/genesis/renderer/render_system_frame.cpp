@@ -455,7 +455,10 @@ namespace Genesis
                     cmd_->bindPipeline(pipeline);
                     bound_pipeline_ = pipeline;
                 }
-                cmd_->bindVertexBuffer(mesh->vertex_buffer, 0);
+                cmd_->bindVertexBuffer(
+                    (mesh->use_animated_vertex_buffer && mesh->animated_vertex_buffer) ? mesh->animated_vertex_buffer
+                                                                                       : mesh->vertex_buffer,
+                    0);
                 cmd_->bindIndexBuffer(mesh->index_buffer, mesh->index_type, 0);
                 RHI::RHIDescriptorSet *sets[3] = {rs_.scene_set_, material->descriptor_set, rs_.per_draw_set_};
                 const uint32_t offsets[5] = {view_offset_, lights_offset_, env_offset_, mat_offset, draw_offset};
@@ -742,6 +745,15 @@ namespace Genesis
                 pushQuad(p, uv, c, 0.0f, 0.0f, Math::Color(0, 0, 0, 0));
             }
 
+            void rect2DUV(float x, float y, float w, float h, const Math::Vec2 &uv0, const Math::Vec2 &uv1,
+                          const Math::Color &c, RHI::RHITexture *tex, RHI::RHISampler *samp)
+            {
+                beginSegment(tex, samp, false);
+                const Math::Vec3 p[4] = {{x, y, 0}, {x + w, y, 0}, {x + w, y + h, 0}, {x, y + h, 0}};
+                const float uv[4][2] = {{uv0.x, uv0.y}, {uv1.x, uv0.y}, {uv1.x, uv1.y}, {uv0.x, uv1.y}};
+                pushQuad(p, uv, c, 0.0f, 0.0f, Math::Color(0, 0, 0, 0));
+            }
+
             void line2D(const Math::Vec2 &a, const Math::Vec2 &b, const Math::Color &c, float thickness)
             {
                 Math::Vec2 d = b - a;
@@ -973,12 +985,24 @@ namespace Genesis
                 case T::DrawLine2D: line2D(Math::Vec2(c.v0.x, c.v0.y), Math::Vec2(c.v0.z, c.v0.w), c.c0, c.f0); break;
                 case T::DrawImage:
                 {
+                    if (c.raw_texture)
+                    {
+                        rect2D(c.v0.x, c.v0.y, c.v0.z, c.v0.w, c.c0, c.raw_texture,
+                               c.raw_sampler ? c.raw_sampler : rs_.linear_clamp_, c.flip_v);
+                        break;
+                    }
                     TargetRef src = resolve(c.source);
                     if (!src.color) return;
                     RHI::RHISampler *samp = c.source.texture ? c.source.texture->sampler() : rs_.linear_clamp_;
                     rect2D(c.v0.x, c.v0.y, c.v0.z, c.v0.w, c.c0, src.color, samp, !src.row0_top);
                     break;
                 }
+                case T::DrawSprite:
+                    if (c.raw_texture)
+                        rect2DUV(c.v0.x, c.v0.y, c.v0.z, c.v0.w, Math::Vec2(c.v1.x, c.v1.y),
+                                 Math::Vec2(c.v1.z, c.v1.w), c.c0, c.raw_texture,
+                                 c.raw_sampler ? c.raw_sampler : rs_.linear_clamp_);
+                    break;
                 case T::DrawText:
                     text2D(c.text, c.v0.x, c.v0.y, c.f0, c.c0, (Text::TextAlign)c.u0, c.f1, c.c1);
                     break;

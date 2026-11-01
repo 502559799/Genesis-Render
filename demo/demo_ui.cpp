@@ -4,7 +4,11 @@
 #include "demo_app.hpp"
 
 #include "foundation_layer/genesis_log.hpp"
+#include "animation/animation_system.hpp"
+#include "api/compute_api.hpp"
+#include "api/rendering_api.hpp"
 #include "renderer/render_system.hpp"
+#include "resource/asset_package.hpp"
 #include "script/script_system.hpp"
 #include "ui/inspector.hpp"
 #include "ui/ui_system.hpp"
@@ -12,6 +16,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -62,6 +67,21 @@ namespace Demo
              "end"},
         };
 
+        const char *kJsConsoleExamples[][2] = {
+            {"JS: list reflected types",
+             "print(reflect.types().join(', '))"},
+            {"JS: describe Material",
+             "var d = reflect.describe('Material');\nprint(d.name + ' - ' + d.description);\nd.properties.forEach(function(p){ print('  ' + p.name + ' : ' + p.type); });"},
+            {"JS: spawn a sphere (RTTI)",
+             "var m = renderer.createMaterial('js_console_material');\nm.base_color = color(Math.random(), Math.random(), 0.8, 1);\nm.metallic = 1.0; m.roughness = 0.2;\nvar e = world.create('JS console sphere');\ne.setMesh(renderer.createMesh('sphere', 0.8), m);\ne.Transform.position = vec3(Math.random()*4-2, 2.6, Math.random()*2);\nvar t = e.add('Text'); t.text = 'from JavaScript'; t.offset = vec3(0, 0.6, 0);\nprint('spawned entity ' + e.id);"},
+            {"JS: edit a material",
+             "var m = renderer.findMaterial('Gold');\nif (m) { m.roughness = 0.7; m.base_color = color(0.95, 0.55, 0.25, 1); }\nprint(m);"},
+            {"JS: physics impulse",
+             "var e = world.find('Ball_0');\nif (e) physics.applyImpulse(e, vec3(0, 8, 0), e.Transform.position);\nprint('bodies ' + physics.body_count + ', contacts ' + physics.contacts);"},
+            {"JS: package config",
+             "print(asset_text('config/game.json'));"},
+        };
+
         bool colorEdit(const char *label, Genesis::Math::Color &c, bool alpha = false)
         {
             return alpha ? ImGui::ColorEdit4(label, &c.r) : ImGui::ColorEdit3(label, &c.r);
@@ -94,6 +114,15 @@ namespace Demo
         if (show_material_) drawMaterialPanel();
         if (show_cb_) drawCommandBufferPanel();
         if (show_text_) drawTextPanel();
+        if (show_physics_) drawPhysicsPanel();
+        if (show_gaussian_) drawGaussianPanel();
+        if (show_package_) drawPackagePanel();
+        if (show_game_) drawGamePanel();
+        if (show_animation_) drawAnimationPanel();
+        if (show_raytracing_) drawRayTracingPanel();
+        if (show_codec_) drawCodecPanel();
+        if (show_apis_) drawApisPanel();
+        if (show_media_) drawMediaPanel();
         if (show_console_) drawConsolePanel();
         if (show_log_) drawLogPanel();
         if (show_help_) drawHelpPanel();
@@ -104,7 +133,10 @@ namespace Demo
         if (!ImGui::BeginMainMenuBar()) return;
         if (ImGui::BeginMenu("Scene"))
         {
-            const char *labels[] = {"Showcase (C++)", "Built by Lua script (RTTI)", "CommandBuffer demo (Lua)", "Empty"};
+            const char *labels[] = {"Showcase (C++)", "Built by Lua script (RTTI)", "CommandBuffer demo (Lua)",
+                                    "Physics playground", "Cascade mini-game (package)", "Gaussian splat viewer",
+                                    "Package scene (.gpkg)", "Animation lab (2D sprite + 3D compute)",
+                                    "Ray tracing (compute)", "Media player (libavcodec)", "Empty"};
             for (uint32_t i = 0; i < (uint32_t)SceneKind::Count; ++i)
                 if (ImGui::MenuItem(labels[i], nullptr, scene_ == (SceneKind)i)) pending_scene_ = (SceneKind)i;
             ImGui::Separator();
@@ -119,7 +151,16 @@ namespace Demo
             ImGui::MenuItem("Material editor", nullptr, &show_material_);
             ImGui::MenuItem("CommandBuffer lab", nullptr, &show_cb_);
             ImGui::MenuItem("SDF text lab", nullptr, &show_text_);
-            ImGui::MenuItem("Lua console", nullptr, &show_console_);
+            ImGui::MenuItem("Physics lab", nullptr, &show_physics_);
+            ImGui::MenuItem("Gaussian splat lab", nullptr, &show_gaussian_);
+            ImGui::MenuItem("Asset package browser", nullptr, &show_package_);
+            ImGui::MenuItem("Cascade game", nullptr, &show_game_);
+            ImGui::MenuItem("Animation lab", nullptr, &show_animation_);
+            ImGui::MenuItem("Ray tracing lab", nullptr, &show_raytracing_);
+            ImGui::MenuItem("Encoder / Decoder lab", nullptr, &show_codec_);
+            ImGui::MenuItem("Engine APIs (4)", nullptr, &show_apis_);
+            ImGui::MenuItem("Media player", nullptr, &show_media_);
+            ImGui::MenuItem("Lua / JS console", nullptr, &show_console_);
             ImGui::MenuItem("Log", nullptr, &show_log_);
             ImGui::MenuItem("Controls", nullptr, &show_help_);
             ImGui::EndMenu();
@@ -157,8 +198,14 @@ namespace Demo
         if (engine.hasScript())
             ImGui::Text("lua     : %zu scripts, %.2f ms, %u errors", engine.script().loadedScripts(), engine.script().lastTickMs(),
                         engine.script().errorCount());
+        if (engine.hasJS())
+            ImGui::Text("js      : %zu scripts, %.2f ms, %u errors", engine.js().loadedScripts(), engine.js().lastTickMs(),
+                        engine.js().errorCount());
         ImGui::Separator();
-        const char *scenes[] = {"Showcase (C++)", "Built by Lua (RTTI)", "CommandBuffer demo (Lua)", "Empty"};
+        const char *scenes[] = {"Showcase (C++)", "Built by Lua (RTTI)", "CommandBuffer demo (Lua)", "Physics playground",
+                                "Cascade mini-game (package)", "Gaussian splat viewer", "Package scene (.gpkg)",
+                                "Animation lab (2D sprite + 3D compute)", "Ray tracing (compute)",
+                                "Media player (libavcodec)", "Empty"};
         int sc = (int)scene_;
         if (ImGui::Combo("scene", &sc, scenes, (int)SceneKind::Count)) pending_scene_ = (SceneKind)sc;
         if (ImGui::Button("Screenshot"))
@@ -494,9 +541,514 @@ namespace Demo
     }
 
     //======================================================================
+    void DemoApp::drawPhysicsPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Physics lab", &show_physics_)) { ImGui::End(); return; }
+        Physics::PhysicsSystem &physics = engine.physics();
+        Physics::PhysicsSettings &ps = physics.settings();
+        ImGui::TextDisabled("sequential impulses - sphere / box / plane / capsule + hinges");
+        ImGui::Checkbox("enabled", &ps.enabled);
+        ImGui::SameLine();
+        bool paused = physics.paused();
+        if (ImGui::Checkbox("pause", &paused)) physics.setPaused(paused);
+        ImGui::SameLine();
+        if (ImGui::Button("step") && physics.paused()) physics.stepOnce(engine.world());
+        ImGui::Checkbox("debug shapes", &physics_debug_);
+        ImGui::SetNextItemWidth(150);
+        ImGui::DragFloat("gravity Y", &ps.gravity.y, 0.05f, -30.0f, 0.0f, "%.2f");
+        int iterations = (int)ps.solver_iterations;
+        if (ImGui::SliderInt("iterations", &iterations, 1, 20)) ps.solver_iterations = (uint32_t)iterations;
+        ImGui::Text("bodies  : %zu (%zu dynamic)", physics.bodyCount(), physics.dynamicBodyCount());
+        ImGui::Text("contacts: %zu  triggers: %zu", physics.contactCount(), physics.triggerCount());
+        ImGui::Text("solver  : %.3f ms, %llu steps", physics.stepTimeMs(),
+                    (unsigned long long)physics.stepCount());
+
+        sectionTitle("spawn");
+        const char *kinds[] = {"sphere", "box", "capsule"};
+        ImGui::SetNextItemWidth(110);
+        ImGui::Combo("shape", &physics_spawn_kind_, kinds, 3);
+        ImGui::DragFloat("height", &physics_spawn_height_, 0.1f, 1.0f, 20.0f);
+        ImGui::DragFloat("spread", &physics_spawn_spread_, 0.05f, 0.0f, 5.0f);
+        if (ImGui::Button("Spawn body"))
+        {
+            Render::RenderScene &scene = engine.render().scene();
+            static const char *names[] = {"Physics balls", "Physics crates", "Physics capsule"};
+            Render::MaterialPtr mat = scene.findMaterial(names[physics_spawn_kind_]);
+            if (!mat)
+            {
+                mat = scene.createMaterial(names[physics_spawn_kind_]);
+                mat->base_color = Math::Color(0.9f, 0.5f, 0.2f, 1.0f);
+                mat->roughness = 0.45f;
+            }
+            const float offset = (float)((physics.stepCount() * 37) % 21 - 10) * 0.08f;
+            const Math::Vec3 position(offset * physics_spawn_spread_, physics_spawn_height_, 2.0f + offset * 0.3f);
+            const char *kinds2[] = {"sphere", "box", "capsule"};
+            std::string name = "Spawned_" + std::to_string(engine.world().entityCount());
+            ECS::Entity e = spawnMesh(name, Reflect::createMeshAsset(kinds2[physics_spawn_kind_], 1.0f, 24),
+                                      mat, position);
+            ECS::RigidBodyComponent rb;
+            rb.type = ECS::BodyType::Dynamic;
+            rb.mass = 0.8f;
+            rb.restitution = 0.45f;
+            engine.world().addComponent<ECS::RigidBodyComponent>(e, rb);
+            ECS::ColliderComponent col;
+            if (physics_spawn_kind_ == 0) { col.shape = ECS::ColliderShape::Sphere; col.radius = 0.5f; }
+            else if (physics_spawn_kind_ == 1) { col.shape = ECS::ColliderShape::Box; col.half_extents = Math::Vec3(0.5f); }
+            else { col.shape = ECS::ColliderShape::Capsule; col.radius = 0.4f; col.height = 2.0f; }
+            engine.world().addComponent<ECS::ColliderComponent>(e, col);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset playground")) pending_scene_ = SceneKind::Physics;
+        if (engine.hasPhysics())
+        {
+            ImGui::TextDisabled("Hinge demo: the brass bar is constrained to a world anchor.");
+        }
+        if (ImGui::CollapsingHeader("recent contacts"))
+        {
+            const auto &contacts = physics.contacts();
+            for (size_t i = 0; i < contacts.size() && i < 12; ++i)
+            {
+                const Physics::Contact &c = contacts[i];
+                ImGui::BulletText("%s / %s  pen %.3f%s", engine.world().entityName(c.a).c_str(),
+                                  engine.world().entityName(c.b).c_str(), c.penetration,
+                                  c.trigger ? " (trigger)" : "");
+            }
+        }
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawGaussianPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Gaussian splat lab", &show_gaussian_)) { ImGui::End(); return; }
+        ImGui::TextDisabled("screen-space sorted gaussian splats (CPU sort, RHI batch)");
+        ImGui::SetNextItemWidth(-90);
+        ImGui::InputText("##path", gaussian_path_input_, sizeof(gaussian_path_input_));
+        ImGui::SameLine();
+        if (ImGui::Button("Load"))
+        {
+            gaussian_path_ = gaussian_path_input_;
+            std::string error;
+            if (!gaussian_cloud_.loadPly(gaussian_path_, &error))
+                engine.ui().pushLog("splat load failed: " + error);
+            else
+                pending_scene_ = SceneKind::Gaussian;
+        }
+        ImGui::Checkbox("auto orbit", &gaussian_auto_orbit_);
+        ImGui::SliderFloat("size", &gaussian_settings_.size_scale, 0.1f, 4.0f);
+        ImGui::SliderFloat("opacity", &gaussian_settings_.opacity_scale, 0.0f, 2.0f);
+        ImGui::SliderFloat("max radius", &gaussian_settings_.max_screen_radius, 2.0f, 400.0f);
+        int max_splats = (int)gaussian_settings_.max_splats;
+        if (ImGui::DragInt("max splats", &max_splats, 100.0f, 0, (int)std::max<size_t>(1, gaussian_cloud_.count())))
+            gaussian_settings_.max_splats = (uint32_t)std::max(0, max_splats);
+        ImGui::Checkbox("depth sort", &gaussian_settings_.sort);
+        ImGui::SameLine();
+        ImGui::Checkbox("colour", &gaussian_settings_.colored);
+        colorEdit("tint", gaussian_settings_.tint, true);
+
+        const auto &load = gaussian_cloud_.stats();
+        const auto &stats = gaussian_renderer_.stats();
+        ImGui::Separator();
+        ImGui::Text("file    : %s", gaussian_cloud_.sourcePath().c_str());
+        ImGui::Text("load    : %llu vertices (%s, %s), %llu skipped",
+                    (unsigned long long)load.vertices, load.binary ? "binary" : "ascii",
+                    load.has_sh ? "3DGS" : "point cloud", (unsigned long long)load.skipped);
+        ImGui::Text("render  : %zu / %zu visible, %zu drawn", stats.visible, stats.total, stats.drawn);
+        ImGui::Text("timing  : project %.2f ms, sort %.2f ms", stats.project_ms, stats.sort_ms);
+        ImGui::TextWrapped("The page is intentionally self contained: an anisotropic covariance / SH "
+                           "extension can replace the projection and shader without touching the rest of "
+                           "the engine. See docs/GAUSSIAN_SPLATTING.md.");
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawPackagePanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Asset package browser", &show_package_)) { ImGui::End(); return; }
+        ImGui::TextDisabled("runtime .gpkg loading: scene / materials / 3-backend shaders / textures / scripts / config");
+        if (package_files_.empty())
+            ImGui::TextWrapped("No packages found. Build them with: python3 tools/genesis_pack.py build "
+                               "assets/packages/cascade_src");
+        if (!package_files_.empty())
+        {
+            if (package_index_ < 0) package_index_ = 0;
+            if (package_index_ >= (int)package_files_.size()) package_index_ = (int)package_files_.size() - 1;
+            std::vector<std::string> labels;
+            for (const std::string &p : package_files_) labels.push_back(ResourceIO::pathFilename(p));
+            std::vector<const char *> names;
+            for (const std::string &label : labels) names.push_back(label.c_str());
+            ImGui::SetNextItemWidth(-1);
+            ImGui::Combo("##packages", &package_index_, names.data(), (int)names.size());
+            if (ImGui::Button("Load package"))
+            {
+                if (loadPackage(package_files_[package_index_], nullptr))
+                    pending_scene_ = SceneKind::Package;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Refresh")) refreshPackageList();
+            if (ImGui::Button("Open in scene"))
+            {
+                if (engine.activePackage()) pending_scene_ = SceneKind::Package;
+                else if (loadPackage(package_files_[package_index_], nullptr)) pending_scene_ = SceneKind::Package;
+            }
+        }
+        ImGui::Separator();
+        ImGui::TextWrapped("%s", package_status_.c_str());
+        if (engine.activePackage())
+        {
+            const AssetPackagePtr &package = engine.activePackage();
+            ImGui::Text("name: %s  files: %zu  raw: %.1f KB", package->name().c_str(), package->entries().size(),
+                        package->totalRawBytes() / 1024.0);
+            if (ImGui::CollapsingHeader("manifest", ImGuiTreeNodeFlags_DefaultOpen))
+                ImGui::TextWrapped("%s", package->manifestJson().c_str());
+            if (ImGui::CollapsingHeader("contents"))
+            {
+                for (const PackageEntry &entry : package->entries())
+                    ImGui::BulletText("%s  (%u B)", entry.path.c_str(), entry.raw_size);
+            }
+        }
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawGamePanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Cascade game", &show_game_)) { ImGui::End(); return; }
+        ImGui::TextDisabled("physics mini-game - assets loaded from cascade.gpkg");
+        ImGui::TextWrapped("%s", game_status_.c_str());
+        ImGui::Separator();
+        ImGui::BulletText("Aim with the mouse, click / SPACE to launch a ball");
+        ImGui::BulletText("Knock the golden crates off the platform");
+        ImGui::BulletText("R restarts the round, P toggles the physics debug view");
+        ImGui::Separator();
+        if (ImGui::Button("Restart round")) pending_scene_ = SceneKind::Game;
+        ImGui::SameLine();
+        if (ImGui::Button("Physics lab")) pending_scene_ = SceneKind::Physics;
+        ImGui::SameLine();
+        if (ImGui::Button("Package browser")) show_package_ = true;
+        Physics::PhysicsSystem &physics = engine.physics();
+        ImGui::Text("bodies %zu (dynamic %zu), contacts %zu", physics.bodyCount(), physics.dynamicBodyCount(),
+                    physics.contactCount());
+        ImGui::Checkbox("debug shapes", &physics_debug_);
+        if (!engine.hasJS())
+            ImGui::TextWrapped("JavaScript is unavailable in this build - the package ships a Lua fallback script.");
+        ImGui::End();
+    }
+
+    namespace
+    {
+        std::vector<API::FrameImage> makeCodecFrames(int count)
+        {
+            std::vector<API::FrameImage> frames;
+            for (int f = 0; f < count; ++f)
+            {
+                API::FrameImage frame;
+                frame.width = 128;
+                frame.height = 72;
+                frame.rgba.resize((size_t)frame.width * frame.height * 4);
+                const float cx = 32.0f + (float)f * 10.0f;
+                const float cy = 36.0f + std::sin((float)f * 0.9f) * 12.0f;
+                for (uint32_t y = 0; y < frame.height; ++y)
+                    for (uint32_t x = 0; x < frame.width; ++x)
+                    {
+                        const size_t i = ((size_t)y * frame.width + x) * 4;
+                        frame.rgba[i + 0] = (uint8_t)(x * 2);
+                        frame.rgba[i + 1] = (uint8_t)(y * 3);
+                        frame.rgba[i + 2] = (uint8_t)(40 + f * 18);
+                        const float d = std::hypot((float)x - cx, (float)y - cy);
+                        if (d < 14.0f)
+                        {
+                            frame.rgba[i + 0] = 255;
+                            frame.rgba[i + 1] = (uint8_t)(140 + f * 10);
+                            frame.rgba[i + 2] = 60;
+                        }
+                        frame.rgba[i + 3] = 255;
+                    }
+                frames.push_back(std::move(frame));
+            }
+            return frames;
+        }
+    } // namespace
+
+    //======================================================================
+    void DemoApp::drawAnimationPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Animation lab", &show_animation_)) { ImGui::End(); return; }
+        Animation::AnimationSystem &anim = engine.animation();
+        ImGui::TextDisabled("2D sprite-sheet sequence + 3D compute vertex animation");
+        ECS::World &world = engine.world();
+        ECS::Entity hud = world.findEntity("SpriteAnimation2D");
+        ECS::SpriteAnimationComponent *hud_sprite = world.getComponent<ECS::SpriteAnimationComponent>(hud);
+        ECS::SpriteAnimationComponent *world_sprite =
+            world.getComponent<ECS::SpriteAnimationComponent>(anim_sprite_);
+        ECS::VertexAnimationComponent *vertex =
+            world.getComponent<ECS::VertexAnimationComponent>(anim_vertex_);
+
+        sectionTitle("2D sequence frames");
+        bool playing = hud_sprite ? hud_sprite->playing : sprite_playing_;
+        if (ImGui::Checkbox("playing", &playing))
+        {
+            sprite_playing_ = playing;
+            if (hud_sprite) hud_sprite->playing = playing;
+            if (world_sprite) world_sprite->playing = playing;
+        }
+        if (ImGui::SliderFloat("fps", &sprite_fps_, 1.0f, 60.0f))
+        {
+            if (hud_sprite) hud_sprite->fps = sprite_fps_;
+            if (world_sprite) world_sprite->fps = sprite_fps_;
+        }
+        if (hud_sprite)
+        {
+            ImGui::Text("frame %u / %u   columns %u x rows %u", hud_sprite->frame,
+                        std::max(1u, hud_sprite->frame_count), hud_sprite->columns, hud_sprite->rows);
+            if (ImGui::Button("prev")) hud_sprite->frame = (hud_sprite->frame + hud_sprite->frame_count - 1) % hud_sprite->frame_count;
+            ImGui::SameLine();
+            if (ImGui::Button("next")) hud_sprite->frame = (hud_sprite->frame + 1) % hud_sprite->frame_count;
+            ImGui::SameLine();
+            ImGui::TextDisabled("texture: textures/sprite_sheet.png");
+        }
+
+        sectionTitle("3D compute vertex animation");
+        ImGui::Text("backend compute : %s", anim.computeAvailable() ? "available" : "unavailable");
+        ImGui::Text("vertex animated : %zu   dispatches: %zu", anim.vertex_animations(), anim.dispatches());
+        bool enabled = vertex ? vertex->enabled : vertex_animation_enabled_;
+        if (ImGui::Checkbox("enabled##vertex", &enabled))
+        {
+            vertex_animation_enabled_ = enabled;
+            if (vertex) vertex->enabled = enabled;
+        }
+        if (ImGui::SliderFloat("amplitude", &vertex_amplitude_, 0.0f, 1.2f) && vertex)
+            vertex->amplitude = vertex_amplitude_;
+        if (ImGui::SliderFloat("frequency", &vertex_frequency_, 0.0f, 8.0f) && vertex)
+            vertex->frequency = vertex_frequency_;
+        if (ImGui::SliderFloat("speed", &vertex_speed_, 0.0f, 8.0f) && vertex)
+            vertex->speed = vertex_speed_;
+        ImGui::TextWrapped("The torus vertex buffer is rewritten every frame by "
+                           "anim/vertex_anim.comp (GLSL / SPIR-V / MSL). The mesh pass binds the "
+                           "compute-written buffer after a ShaderWrite -> VertexAttributeRead barrier.");
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawRayTracingPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Ray tracing lab", &show_raytracing_)) { ImGui::End(); return; }
+        API::RayTracingAPI &rt = engine.rayTracing();
+        ImGui::TextDisabled("portable GPU ray tracing via the Compute API (compute shader path)");
+        ImGui::Text("backend : %s", rt.backendName().c_str());
+        ImGui::Text("native hardware RT : %s", rt.hardwareRayTracing() ? "active" : "not available (compute path)");
+        ImGui::Checkbox("auto trace", &rt_auto_trace_);
+        ImGui::SameLine();
+        if (ImGui::Button("Trace now")) rt_trace_requested_ = true;
+        int width = (int)rt_settings_.width;
+        int height = (int)rt_settings_.height;
+        int samples = (int)rt_settings_.samples;
+        bool changed = false;
+        ImGui::SetNextItemWidth(120);
+        if (ImGui::DragInt("width", &width, 8.0f, 64, 1280)) changed = true;
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(120);
+        if (ImGui::DragInt("height", &height, 8.0f, 36, 720)) changed = true;
+        if (ImGui::SliderInt("samples", &samples, 1, 8)) changed = true;
+        if (changed)
+        {
+            rt_settings_.width = (uint32_t)std::max(16, width);
+            rt_settings_.height = (uint32_t)std::max(16, height);
+            rt_settings_.samples = (uint32_t)std::max(1, samples);
+            rt_settings_.width &= ~7u;
+            rt_settings_.height &= ~7u;
+            rt_trace_requested_ = true;
+        }
+        ImGui::Text("last    : %.2f ms  (%s)", rt_last_ms_, rt_status_.c_str());
+        ImGui::Text("image   : %ux%u, %u spp, %u spheres", rt.stats().width, rt.stats().height,
+                    rt.stats().samples, rt.stats().spheres);
+        ImGui::Text("GPU     : %s", rt.stats().gpu ? "yes (compute)" : "no (CPU fallback)");
+        if (ImGui::Button("Add sphere"))
+        {
+            API::RTSphere sphere;
+            const float a = (float)rt_scene_.size() * 0.9f;
+            sphere.center = Math::Vec3(std::cos(a) * 2.8f, 1.2f + 0.2f * (float)(rt_scene_.size() % 3),
+                                       std::sin(a) * 2.8f - 1.0f);
+            sphere.radius = 0.35f + 0.05f * (float)(rt_scene_.size() % 4);
+            sphere.color = Math::Color(0.9f, 0.5f, 0.2f + 0.05f * (float)rt_scene_.size(), 1.0f);
+            rt_scene_.push_back(sphere);
+            rt.setScene(rt_scene_);
+            rt_trace_requested_ = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Reset spheres")) pending_scene_ = SceneKind::RayTracing;
+        ImGui::TextWrapped("The compute kernel intersects spheres and a ground plane, traces hard "
+                           "shadows and one reflection bounce. VK_KHR_ray_tracing / Metal ray "
+                           "tracing can replace the backend behind this same API.");
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawCodecPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Encoder / Decoder lab", &show_codec_)) { ImGui::End(); return; }
+        API::EncoderDecoderAPI &codec = engine.encoderDecoder();
+        ImGui::TextDisabled("hardware-capable encode/decode API (NVENC / VA-API / QSV / VideoToolbox + software)");
+        if (ImGui::BeginTable("codecs", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+        {
+            ImGui::TableSetupColumn("codec");
+            ImGui::TableSetupColumn("hardware");
+            ImGui::TableSetupColumn("available");
+            ImGui::TableSetupColumn("detail");
+            ImGui::TableHeadersRow();
+            for (const API::CodecInfo &info : codec.codecs())
+            {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0); ImGui::Text("%s", info.name.c_str());
+                ImGui::TableSetColumnIndex(1); ImGui::Text("%s", info.hardware ? "yes" : "-");
+                ImGui::TableSetColumnIndex(2);
+                ImGui::TextColored(info.available ? ImVec4(0.5f, 1, 0.6f, 1) : ImVec4(1, 0.5f, 0.5f, 1),
+                                   "%s", info.available ? "yes" : "no");
+                ImGui::TableSetColumnIndex(3); ImGui::Text("%s", info.detail.c_str());
+            }
+            ImGui::EndTable();
+        }
+        if (ImGui::Button("Raw sequence roundtrip"))
+        {
+            auto frames = makeCodecFrames(8);
+            API::CodecOptions options;
+            options.codec = API::Codec::Raw;
+            std::string error;
+            const bool ok = codec.encodeSequence(frames, "/tmp/genesis_codec_ui.gseq", options, &error);
+            std::vector<API::FrameImage> decoded;
+            if (ok && codec.decodeSequence("/tmp/genesis_codec_ui.gseq", decoded, &error) && decoded.size() == frames.size())
+                codec_status_ = "raw: encoded+decoded " + std::to_string(decoded.size()) + " frames";
+            else
+                codec_status_ = "raw failed: " + error;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("H.264 sequence roundtrip"))
+        {
+            auto frames = makeCodecFrames(10);
+            API::CodecOptions options;
+            options.codec = API::Codec::H264;
+            options.fps = 15;
+            options.prefer_hardware = true;
+            std::string error;
+            const bool ok = codec.encodeSequence(frames, "/tmp/genesis_codec_ui.mp4", options, &error);
+            std::vector<API::FrameImage> decoded;
+            if (ok && codec.decodeSequence("/tmp/genesis_codec_ui.mp4", decoded, &error))
+                codec_status_ = "H.264: " + codec.lastBackend() + ", decoded " + std::to_string(decoded.size()) + " frames";
+            else
+                codec_status_ = "H.264 failed: " + error;
+        }
+        if (ImGui::Button("Encode current frame (PNG)"))
+        {
+            codec_capture_requested_ = true;
+            codec_status_ = "capturing the next completed frame...";
+        }
+        ImGui::TextWrapped("%s", codec_status_.c_str());
+        const API::CodecStats &stats = codec.stats();
+        ImGui::Text("last backend : %s", stats.backend.c_str());
+        ImGui::Text("encode %.2f ms   decode %.2f ms", stats.encode_ms, stats.decode_ms);
+        ImGui::Text("frames %u  %ux%u", stats.frames, stats.width, stats.height);
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawApisPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Engine APIs (4)", &show_apis_)) { ImGui::End(); return; }
+        ImGui::TextDisabled("Rendering / Compute / Ray Tracing / Encoder & Decoder");
+        sectionTitle("1. Rendering API");
+        ImGui::BulletText("backend: %s  %ux%u", engine.rendering().backendName(), engine.rendering().width(),
+                          engine.rendering().height());
+        ImGui::BulletText("draws: %u  triangles: %u", engine.rendering().stats().draw_calls,
+                          engine.rendering().stats().triangles);
+        sectionTitle("2. Compute API");
+        ImGui::BulletText("hardware compute: %s", engine.compute().supportsHardwareCompute() ? "yes" : "no");
+        ImGui::BulletText("animation dispatches: %zu", engine.animation().dispatches());
+        ImGui::BulletText("vertex animated meshes: %zu", engine.animation().vertex_animations());
+        sectionTitle("3. Ray Tracing API");
+        ImGui::BulletText("backend: %s", engine.rayTracing().backendName().c_str());
+        ImGui::BulletText("hardware RT: %s", engine.rayTracing().hardwareRayTracing() ? "yes" : "no (compute)");
+        ImGui::BulletText("last trace: %.2f ms", engine.rayTracing().stats().trace_ms);
+        sectionTitle("4. Encoder & Decoder API");
+        ImGui::BulletText("ffmpeg: %s", engine.encoderDecoder().available() ? "available" : "not found");
+        ImGui::BulletText("codecs: %zu", engine.encoderDecoder().codecs().size());
+        ImGui::BulletText("last codec: %s", engine.encoderDecoder().lastBackend().c_str());
+        ImGui::Separator();
+        ImGui::TextWrapped("The four facade APIs delegate to the existing RHI/RenderSystem/systems; "
+                           "the original demo scenes and tests keep using the same implementation.");
+        ImGui::End();
+    }
+
+    //======================================================================
+    void DemoApp::drawMediaPanel()
+    {
+        leftColumn();
+        if (!ImGui::Begin("Media player", &show_media_)) { ImGui::End(); return; }
+        ImGui::TextDisabled("libavformat + libavcodec + libswscale + libswresample, in-process; SDL audio");
+        ImGui::SetNextItemWidth(-90);
+        ImGui::InputText("##media_path", media_path_, sizeof(media_path_));
+        ImGui::SameLine();
+        if (ImGui::Button("Open"))
+        {
+            pending_scene_ = SceneKind::Media;
+        }
+        Media::MediaPlayer *player = media_player_.get();
+        if (!player || !player->isOpen())
+        {
+            ImGui::TextWrapped("%s", media_status_.c_str());
+            ImGui::TextWrapped("The H.264 decoder and the audio decoder are linked directly into the "
+                               "engine; no ffmpeg subprocess is started at run time.");
+            ImGui::End();
+            return;
+        }
+        const Media::MediaInfo &info = player->info();
+        ImGui::Text("video : %s  %dx%d @ %.1f fps", info.video_codec.c_str(), info.width, info.height, info.fps);
+        ImGui::Text("audio : %s  %d Hz  %d ch  |  SDL device: %s", info.audio_codec.c_str(), info.sample_rate,
+                    info.channels, player->audioDeviceOpen() ? "open" : "off");
+        ImGui::Text("duration: %.2f s   queued audio samples: %zu", info.duration, player->queuedAudioSamples());
+        if (ImGui::Button(player->playing() ? "Pause" : "Play")) player->toggle();
+        ImGui::SameLine();
+        if (ImGui::Button("Restart")) player->seek(0.0);
+        float pos = (float)player->position();
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##seek", &pos, 0.0f, (float)std::max(0.01, info.duration)))
+            player->seek(pos);
+        if (ImGui::SliderFloat("volume", &media_volume_, 0.0f, 1.0f)) player->setVolume(media_volume_);
+        ImGui::Checkbox("debug / no audio device", &no_audio_device_);
+        if (ImGui::Button("Reopen with audio setting"))
+        {
+            const std::string path = media_path_;
+            player->close();
+            std::string error;
+            player->open(path, !no_audio_device_, &error);
+            player->setVolume(media_volume_);
+            player->play();
+        }
+        ImGui::TextWrapped("Decoded video is uploaded to an RHI texture and drawn with the batch path; "
+                           "decoded audio is resampled to 48 kHz S16 stereo and played by SDL.");
+        ImGui::End();
+    }
+
+    //======================================================================
     void DemoApp::runConsole(const std::string &code)
     {
-        if (!engine.hasScript() || code.empty()) return;
+        if (code.empty()) return;
+        if (console_language_ == 1)
+        {
+            if (!engine.hasJS()) return;
+            GEN_LOG_INFO("[JS] > %s", code.c_str());
+            engine.js().executeString(code, "=console");
+            console_history_.push_back(code);
+            return;
+        }
+        if (!engine.hasScript()) return;
         GEN_LOG_INFO("[Lua] > %s", code.c_str());
         lua_State *L = engine.script().state();
         // Expressions print their value; statements just run.
@@ -512,18 +1064,32 @@ namespace Demo
         ImGuiIO &io = ImGui::GetIO();
         ImGui::SetNextWindowPos(ImVec2(340, io.DisplaySize.y - 330), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(560, 320), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Lua console", &show_console_)) { ImGui::End(); return; }
-        if (!engine.hasScript())
+        if (!ImGui::Begin("Lua / JS console", &show_console_)) { ImGui::End(); return; }
+        const bool lua_ok = engine.hasScript();
+        const bool js_ok = engine.hasJS();
+        if (!lua_ok && !js_ok)
         {
-            ImGui::TextDisabled("scripting disabled (--no-script)");
+            ImGui::TextDisabled("scripting disabled (--no-script / no V8)");
             ImGui::End();
             return;
         }
+        const char *languages[] = {"Lua 5.4", "JavaScript (V8)"};
+        ImGui::SetNextItemWidth(180);
+        ImGui::Combo("language", &console_language_, languages, 2);
+        if (console_language_ == 0 && !lua_ok) console_language_ = 1;
+        if (console_language_ == 1 && !js_ok) console_language_ = 0;
+        ImGui::SameLine();
         ImGui::SetNextItemWidth(260);
         if (ImGui::BeginCombo("##examples", "examples..."))
         {
-            for (const auto &ex : kConsoleExamples)
-                if (ImGui::Selectable(ex[0])) std::snprintf(console_, sizeof(console_), "%s", ex[1]);
+            const int count = console_language_ == 1 ? (int)(sizeof(kJsConsoleExamples) / sizeof(kJsConsoleExamples[0]))
+                                                     : (int)(sizeof(kConsoleExamples) / sizeof(kConsoleExamples[0]));
+            for (int i = 0; i < count; ++i)
+            {
+                const char *label = console_language_ == 1 ? kJsConsoleExamples[i][0] : kConsoleExamples[i][0];
+                const char *code = console_language_ == 1 ? kJsConsoleExamples[i][1] : kConsoleExamples[i][1];
+                if (ImGui::Selectable(label)) std::snprintf(console_, sizeof(console_), "%s", code);
+            }
             ImGui::EndCombo();
         }
         ImGui::SameLine();
@@ -538,8 +1104,9 @@ namespace Demo
         ImGui::BeginChild("output", ImVec2(0, 0), true);
         auto history = Logger::instance().history();
         std::vector<size_t> lua_lines;
+        const char *tag = console_language_ == 1 ? "[JS]" : "[Lua]";
         for (size_t i = 0; i < history.size(); ++i)
-            if (history[i].text.find("[Lua]") != std::string::npos) lua_lines.push_back(i);
+            if (history[i].text.find(tag) != std::string::npos) lua_lines.push_back(i);
         const size_t first = lua_lines.size() > 120 ? lua_lines.size() - 120 : 0;
         for (size_t k = first; k < lua_lines.size(); ++k)
         {
@@ -564,7 +1131,8 @@ namespace Demo
             }
         };
         show_engine_ = show_render_ = show_inspector_ = show_material_ = show_cb_ = show_text_ = show_console_ = show_log_ =
-            show_help_ = true;
+            show_help_ = show_physics_ = show_gaussian_ = show_package_ = show_game_ = true;
+        show_animation_ = show_raytracing_ = show_codec_ = show_apis_ = show_media_ = true;
         for (uint32_t k = 0; k < (uint32_t)SceneKind::Count; ++k)
         {
             GEN_LOG_INFO("[selftest] scene %s", sceneName((SceneKind)k));
@@ -584,11 +1152,26 @@ namespace Demo
                 frames(1);
             }
             engine.render().settings().post_effect = Render::PostEffect::None;
+            console_language_ = 0;
             for (const auto &ex : kConsoleExamples)
             {
                 runConsole(ex[1]);
                 frames(1);
             }
+            if (engine.hasJS())
+            {
+                console_language_ = 1;
+                for (const auto &ex : kJsConsoleExamples)
+                {
+                    runConsole(ex[1]);
+                    frames(1);
+                }
+                console_language_ = 0;
+            }
+            engine.physics().setPaused(true);
+            engine.physics().stepOnce(engine.world());
+            frames(1);
+            engine.physics().setPaused(false);
             Render::RenderScene &scene = engine.render().scene();
             Render::MaterialPtr m = scene.createMaterial("selftest_material");
             material_index_ = m->index;
@@ -606,7 +1189,9 @@ namespace Demo
             }
             frames(3);
         }
-        const int errors = (int)(Logger::instance().errorCount() - errors_before) + (int)engine.script().errorCount();
+        int errors = (int)(Logger::instance().errorCount() - errors_before);
+        if (engine.hasScript()) errors += (int)engine.script().errorCount();
+        if (engine.hasJS()) errors += (int)engine.js().errorCount();
         GEN_LOG_INFO("[selftest] done: %d error(s)", errors);
         return errors;
     }

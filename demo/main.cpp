@@ -47,8 +47,9 @@ namespace
     void printUsage()
     {
         std::printf(
-            "usage: genesis_demo [--backend gl|vulkan|metal] [--scene showcase|lua|commandbuffer|empty]\n"
-            "                    [--script file.lua] [--lab material|commandbuffer|custom|text|inspector]\n"
+            "usage: genesis_demo [--backend gl|vulkan|metal] [--scene NAME] [--package FILE.gpkg]\n"
+            "                    [--script file.lua|file.js]\n"
+            "                    [--lab material|commandbuffer|custom|text|inspector|physics|gaussian|package|game|animation|raytracing|media|codec|apis]\n"
             "                    [--headless] [--frames N] [--screenshot out.png] [--showcase DIR]\n"
             "                    [--width W] [--height H] [--validation] [--no-ui] [--no-script]\n"
             "                    [--asset-dir DIR] [--selftest] [--tour] [--record DIR [--record-fps F]]\n"
@@ -56,6 +57,13 @@ namespace
             "  scenes   showcase       C++ scene: models, material library, labels, monitor\n"
             "           lua            scene built entirely by assets/scripts/scene_builder.lua\n"
             "           commandbuffer  showcase + assets/scripts/commandbuffer_demo.lua\n"
+            "           physics        rigid bodies / colliders / hinge playground\n"
+            "           game           Cascade physics mini-game loaded from a .gpkg package\n"
+            "           gaussian       3D gaussian splat viewer\n"
+            "           package        scene loaded from a .gpkg package\n"
+            "           animation      2D sprite sheets + 3D compute vertex animation\n"
+            "           raytracing     GPU compute ray tracer page\n"
+            "           media          libavcodec video + SDL audio playback\n"
             "           empty          camera, sun and sky only\n"
             "  --showcase DIR  headless: render labelled PNGs that each isolate one capability\n");
     }
@@ -86,6 +94,7 @@ namespace
             else if (a == "--showcase") o.showcase_dir = next("docs/images");
             else if (a == "--asset-dir") o.asset_dir = next(GENESIS_ASSET_DIR);
             else if (a == "--script") o.script = next("");
+            else if (a == "--package") o.package = next("");
             else if (a == "--lab") o.lab = next("");
             else if (a == "--selftest") o.selftest = true;
             else if (a == "--tour") o.tour = true;
@@ -94,7 +103,8 @@ namespace
             else if (a == "--scene")
             {
                 std::string v = next("showcase");
-                if (!Demo::sceneFromName(v, o.scene)) GEN_LOG_WARN("unknown scene '%s' (showcase | lua | commandbuffer | empty)", v.c_str());
+                if (!Demo::sceneFromName(v, o.scene))
+                    GEN_LOG_WARN("unknown scene '%s' (showcase | lua | commandbuffer | physics | game | gaussian | package | animation | raytracing | media | empty)", v.c_str());
             }
             else if (a == "--help" || a == "-h")
             {

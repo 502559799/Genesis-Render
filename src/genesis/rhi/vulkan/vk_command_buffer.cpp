@@ -274,6 +274,50 @@ namespace Genesis
             vkCmdDispatch(cmd, group_x, group_y, group_z);
         }
 
+        void VkCommandBufferRHI::bufferBarrier(RHIBuffer *buffer, BufferAccess before, BufferAccess after)
+        {
+            VkBufferRHI *b = static_cast<VkBufferRHI *>(buffer);
+            if (!b) return;
+            auto accessMask = [](BufferAccess a) -> VkAccessFlags
+            {
+                switch (a)
+                {
+                case BufferAccess::ShaderRead: return VK_ACCESS_SHADER_READ_BIT;
+                case BufferAccess::ShaderWrite: return VK_ACCESS_SHADER_WRITE_BIT;
+                case BufferAccess::VertexAttributeRead: return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+                case BufferAccess::TransferRead: return VK_ACCESS_TRANSFER_READ_BIT;
+                case BufferAccess::TransferWrite: return VK_ACCESS_TRANSFER_WRITE_BIT;
+                case BufferAccess::HostRead: return VK_ACCESS_HOST_READ_BIT;
+                case BufferAccess::HostWrite: return VK_ACCESS_HOST_WRITE_BIT;
+                }
+                return 0;
+            };
+            auto stageMask = [](BufferAccess a) -> VkPipelineStageFlags
+            {
+                switch (a)
+                {
+                case BufferAccess::ShaderRead:
+                case BufferAccess::ShaderWrite: return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                case BufferAccess::VertexAttributeRead: return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+                case BufferAccess::TransferRead:
+                case BufferAccess::TransferWrite: return VK_PIPELINE_STAGE_TRANSFER_BIT;
+                case BufferAccess::HostRead:
+                case BufferAccess::HostWrite: return VK_PIPELINE_STAGE_HOST_BIT;
+                }
+                return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            };
+            VkBufferMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+            barrier.srcAccessMask = accessMask(before);
+            barrier.dstAccessMask = accessMask(after);
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.buffer = b->buffer;
+            barrier.offset = 0;
+            barrier.size = VK_WHOLE_SIZE;
+            vkCmdPipelineBarrier(cmd, stageMask(before), stageMask(after), 0, 0, nullptr, 1, &barrier, 0, nullptr);
+        }
+
         void VkCommandBufferRHI::copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset, RHIBuffer *dst, uint64_t dst_offset, uint64_t size)
         {
             VkBufferRHI *s = static_cast<VkBufferRHI *>(src);

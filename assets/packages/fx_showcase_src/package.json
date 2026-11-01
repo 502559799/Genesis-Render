@@ -1,0 +1,16 @@
+{
+  "name": "fx_showcase",
+  "version": "1.0.0",
+  "description": "Runtime asset package: scene, standalone materials, GLSL/SPIR-V/MSL shaders, textures, JS + Lua scripts and config.",
+  "scene": "scenes/fx_showcase.scene.json",
+  "capabilities": [
+    "scene",
+    "materials",
+    "shaders_glsl_spirv_msl",
+    "textures",
+    "scripts_js_lua",
+    "config",
+    "physics"
+  ],
+  "engine_version_min": "2.0.0"
+}

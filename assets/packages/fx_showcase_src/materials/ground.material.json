@@ -1,0 +1,20 @@
+{
+  "name": "Ground",
+  "base_color": [
+    0.19,
+    0.21,
+    0.24,
+    1.0
+  ],
+  "metallic": 0.05,
+  "roughness": 0.85,
+  "uv_scale": [
+    5,
+    5
+  ],
+  "textures": {
+    "base_color": "textures/checker_albedo.png",
+    "metallic_roughness": "textures/checker_metallic_roughness.png",
+    "normal": "textures/panel_normal.png"
+  }
+}

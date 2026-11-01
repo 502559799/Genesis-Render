@@ -177,6 +177,7 @@ namespace Genesis
             const PipelineDesc &desc() const { return desc_; }
 
             void bindUniformBlocks();
+            void bindStorageBlocks();
             void bindSamplerUniforms();
             const std::vector<SamplerUniform> &samplerUniforms() const { return sampler_uniforms_; }
 
@@ -313,6 +314,7 @@ namespace Genesis
             void drawIndexed(uint32_t index_count, uint32_t first_index, int32_t vertex_offset,
                              uint32_t instance_count, uint32_t first_instance) override;
             void dispatch(uint32_t group_x, uint32_t group_y, uint32_t group_z) override;
+            void bufferBarrier(RHIBuffer *buffer, BufferAccess before, BufferAccess after) override;
 
             void copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset, RHIBuffer *dst, uint64_t dst_offset, uint64_t size) override;
             void copyBufferToImage(RHIBuffer *src, RHITexture *dst, const BufferImageCopy &region) override;

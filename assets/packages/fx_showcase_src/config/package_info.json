@@ -1,0 +1,10 @@
+{
+  "author": "Genesis Render",
+  "license": "repository license",
+  "created_by": "tools/genesis_pack.py",
+  "backend_shaders": [
+    "glsl410",
+    "spirv",
+    "msl2.1"
+  ]
+}

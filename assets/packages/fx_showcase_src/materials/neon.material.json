@@ -1,0 +1,18 @@
+{
+  "name": "Neon",
+  "base_color": [
+    0.02,
+    0.02,
+    0.03,
+    1.0
+  ],
+  "metallic": 0.0,
+  "roughness": 0.6,
+  "shading": "unlit",
+  "emissive": [
+    0.1,
+    0.9,
+    1.0
+  ],
+  "emissive_strength": 3.0
+}

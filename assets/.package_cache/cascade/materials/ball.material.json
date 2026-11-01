@@ -1,0 +1,17 @@
+{
+  "name": "Ball",
+  "base_color": [
+    0.2,
+    0.75,
+    1.0,
+    1.0
+  ],
+  "metallic": 0.7,
+  "roughness": 0.18,
+  "emissive": [
+    0.02,
+    0.15,
+    0.3
+  ],
+  "emissive_strength": 1.5
+}

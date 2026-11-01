@@ -1,0 +1,11 @@
+{
+  "name": "Crate",
+  "base_color": [
+    1.0,
+    0.72,
+    0.22,
+    1.0
+  ],
+  "metallic": 0.45,
+  "roughness": 0.3
+}

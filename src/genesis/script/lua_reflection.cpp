@@ -541,13 +541,38 @@ namespace Genesis
                 return 1;
             }
 
+            std::string currentAssetRoot(lua_State *L)
+            {
+                lua_getglobal(L, "asset_root");
+                std::string root = lua_isstring(L, -1) ? lua_tostring(L, -1) : std::string();
+                lua_pop(L, 1);
+                if (root.empty())
+                {
+                    Reflect::EngineContext &ctx = Reflect::context();
+                    root = ctx.engine ? ctx.engine->config().asset_dir : std::string("assets");
+                }
+                return root;
+            }
+
             int assetPath(lua_State *L)
             {
                 const char *rel = luaL_checkstring(L, 1);
-                Reflect::EngineContext &ctx = Reflect::context();
-                std::string dir = ctx.engine ? ctx.engine->config().asset_dir : std::string("assets");
-                std::string full = ResourceIO::joinPath(dir, rel);
+                std::string full = ResourceIO::joinPath(currentAssetRoot(L), rel);
                 lua_pushlstring(L, full.data(), full.size());
+                return 1;
+            }
+
+            int assetText(lua_State *L)
+            {
+                const char *rel = luaL_checkstring(L, 1);
+                std::string text;
+                const std::string full = ResourceIO::joinPath(currentAssetRoot(L), rel);
+                if (!ResourceIO::fileExists(full) || !ResourceIO::readFileText(full, text))
+                {
+                    lua_pushnil(L);
+                    return 1;
+                }
+                lua_pushlstring(L, text.data(), text.size());
                 return 1;
             }
 
@@ -729,6 +754,8 @@ mat4 = M4
             lua_setglobal(L, "entity");
             lua_pushcfunction(L, assetPath);
             lua_setglobal(L, "asset");
+            lua_pushcfunction(L, assetText);
+            lua_setglobal(L, "asset_text");
             // print() goes to the engine log (visible in the demo log / console).
             lua_pushcfunction(L, printToLog);
             lua_setglobal(L, "print");

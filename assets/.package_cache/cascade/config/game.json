@@ -1,0 +1,12 @@
+{
+  "duration": 60.0,
+  "target_score": 6,
+  "launch_speed": 22.0,
+  "launch_cooldown": 0.28,
+  "ball_radius": 0.36,
+  "ball_mass": 0.7,
+  "displacement_threshold": 1.6,
+  "camera_height": 3.2,
+  "launcher_z": 8.5,
+  "instructions": "Aim with the mouse, click or SPACE to launch. R restarts."
+}

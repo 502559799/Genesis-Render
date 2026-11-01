@@ -196,6 +196,26 @@ namespace Genesis
             }
         }
 
+        void GLPipeline::bindStorageBlocks()
+        {
+#if !defined(__APPLE__)
+            glUseProgram(program_);
+            for (const auto &b : desc_.resource_layout.bindings)
+            {
+                if (b.type != ResourceType::StorageBuffer && b.type != ResourceType::StorageBufferDynamic) continue;
+                if (b.name.empty()) continue;
+                GLuint index = glGetProgramResourceIndex(program_, GL_SHADER_STORAGE_BLOCK, b.name.c_str());
+                if (index == GL_INVALID_INDEX)
+                {
+                    GEN_LOG_DEBUG("[GL] pipeline '%s': storage block '%s' unused by the shader",
+                                  desc_.name.c_str(), b.name.c_str());
+                    continue;
+                }
+                glShaderStorageBlockBinding(program_, index, glStorageBlockIndex(b.set, b.binding));
+            }
+#endif
+        }
+
         void GLPipeline::bindSamplerUniforms()
         {
             glUseProgram(program_);
@@ -411,7 +431,16 @@ namespace Genesis
             info_.max_uniform_buffer_range = (uint64_t)max_ubo_range;
             info_.min_uniform_buffer_offset_alignment = (uint64_t)(min_align > 0 ? min_align : 256);
             info_.max_push_constant_size = 128;
-            info_.supports_compute = false; // GL 4.1 core (macOS ceiling) has no compute shaders
+#if defined(__APPLE__)
+            // Apple caps OpenGL at 4.1 core: no compute shaders (Metal covers it).
+            info_.supports_compute = false;
+#else
+            {
+                int major = 0, minor = 0;
+                if (std::sscanf(version, "%d.%d", &major, &minor) != 2) { major = 0; minor = 0; }
+                info_.supports_compute = major > 4 || (major == 4 && minor >= 3);
+            }
+#endif
             info_.supports_geometry_shader = true;
             info_.supports_tessellation = true;
             info_.supports_multisample = true;
@@ -838,6 +867,7 @@ namespace Genesis
 
             GLPipeline *pipeline = new GLPipeline(program, desc);
             pipeline->bindUniformBlocks();
+            pipeline->bindStorageBlocks();
             pipeline->bindSamplerUniforms();
             pipelines_.push_back(pipeline);
             return pipeline;

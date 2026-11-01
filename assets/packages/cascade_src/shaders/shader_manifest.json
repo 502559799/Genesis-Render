@@ -1,0 +1,24 @@
+{
+  "dialect": {
+    "opengl": "GLSL 4.10",
+    "vulkan": "SPIR-V 1.0",
+    "metal": "MSL 2.1"
+  },
+  "shaders": [
+    {
+      "name": "scene/pbr_mesh",
+      "glsl": {
+        "vertex": "shaders/scene/pbr_mesh.vert",
+        "fragment": "shaders/scene/pbr_mesh.frag"
+      },
+      "spirv": {
+        "vertex": "shaders/generated/pbr_mesh.vert.spv",
+        "fragment": "shaders/generated/pbr_mesh.frag.spv"
+      },
+      "msl": {
+        "vertex": "shaders/generated/pbr_mesh.vert.metal",
+        "fragment": "shaders/generated/pbr_mesh.frag.metal"
+      }
+    }
+  ]
+}

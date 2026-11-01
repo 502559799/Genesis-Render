@@ -1,0 +1,167 @@
+/*
+ * Genesis Render - compute ray tracer
+ *
+ * A portable GPU ray tracer: one invocation per pixel (8x8 workgroup), brute
+ * force sphere/plane intersections, shadow rays and one reflection bounce.
+ * It is the software/hardware-agnostic backend of the Ray Tracing API; the
+ * same API can later dispatch to VK_KHR_ray_tracing / Metal ray tracing.
+ *
+ * binding 0 : scene    (2 vec4 per sphere: center+radius, colour+material)
+ * binding 1 : params   (p0: width,height,samples,time;
+ *                       p1: camera origin + tanHalfFov;
+ *                       p2: right + aspect; p3: up + unused;
+ *                       p4: forward + sphere count)
+ * binding 2 : output   (packed RGBA8, one uint per pixel)
+ */
+#include "common/genesis_shader.h"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+GS_SSBO_RO(0, 0, SceneBuffer) { vec4 scene[]; } scene_data;
+GS_SSBO_RO(0, 1, RtParams) { vec4 p0; vec4 p1; vec4 p2; vec4 p3; vec4 p4; } rt_params;
+GS_SSBO_WO(0, 2, RtOutput) { uint pixels[]; } output_image;
+
+struct Hit
+{
+    float t;
+    vec3 normal;
+    vec3 albedo;
+    float metallic;
+};
+
+bool intersectSphere(vec3 ro, vec3 rd, vec4 sphere, out float t)
+{
+    vec3 oc = ro - sphere.xyz;
+    float b = dot(oc, rd);
+    float c = dot(oc, oc) - sphere.w * sphere.w;
+    float disc = b * b - c;
+    if (disc < 0.0) return false;
+    float s = sqrt(disc);
+    t = -b - s;
+    if (t < 0.001) t = -b + s;
+    return t > 0.001;
+}
+
+Hit traceScene(vec3 ro, vec3 rd, bool primary)
+{
+    Hit hit;
+    hit.t = 1e30;
+    hit.normal = vec3(0.0, 1.0, 0.0);
+    hit.albedo = vec3(0.0);
+    hit.metallic = 0.0;
+
+    const uint count = uint(rt_params.p4.w);
+    for (uint i = 0u; i < count; ++i)
+    {
+        float t;
+        vec4 sphere = scene_data.scene[i * 2u];
+        if (intersectSphere(ro, rd, sphere, t) && t < hit.t)
+        {
+            hit.t = t;
+            hit.normal = normalize(ro + rd * t - sphere.xyz);
+            vec4 mat = scene_data.scene[i * 2u + 1u];
+            hit.albedo = mat.xyz;
+            hit.metallic = mat.w;
+        }
+    }
+
+    // Ground plane y = 0 (checker board).
+    if (abs(rd.y) > 1e-5)
+    {
+        float t = -ro.y / rd.y;
+        if (t > 0.001 && t < hit.t)
+        {
+            vec3 p = ro + rd * t;
+            float checker = mod(floor(p.x) + floor(p.z), 2.0);
+            hit.t = t;
+            hit.normal = vec3(0.0, 1.0, 0.0);
+            hit.albedo = mix(vec3(0.08, 0.09, 0.11), vec3(0.28, 0.30, 0.34), checker);
+            hit.metallic = 0.0;
+        }
+    }
+    return hit;
+}
+
+vec3 sky(vec3 rd)
+{
+    float t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(vec3(0.03, 0.04, 0.07), vec3(0.25, 0.45, 0.85), t);
+}
+
+float hash12(vec2 p)
+{
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+// Direct lighting only (no recursion - GLSL forbids recursive functions).
+vec3 shadeDirect(Hit hit, vec3 p, vec3 rd)
+{
+    vec3 sun = normalize(vec3(0.45, 0.8, 0.35));
+    float ndl = max(dot(hit.normal, sun), 0.0);
+
+    // Shadow ray
+    float shadow = 1.0;
+    Hit shadow_hit = traceScene(p + hit.normal * 0.002, sun, false);
+    if (shadow_hit.t < 1e29) shadow = 0.15;
+
+    vec3 color = hit.albedo * (0.18 + 0.82 * ndl * shadow);
+    color += vec3(0.35, 0.45, 0.6) * pow(max(0.0, dot(reflect(-sun, hit.normal), -rd)), 32.0) * 0.25;
+    return color;
+}
+
+// One reflection bounce, expressed iteratively.
+vec3 shade(vec3 ro, vec3 rd, bool allow_reflection)
+{
+    Hit hit = traceScene(ro, rd, true);
+    if (hit.t >= 1e29) return sky(rd);
+
+    vec3 p = ro + rd * hit.t;
+    vec3 color = shadeDirect(hit, p, rd);
+    if (hit.metallic > 0.5 && allow_reflection)
+    {
+        vec3 r = reflect(rd, hit.normal);
+        Hit reflected_hit = traceScene(p + hit.normal * 0.002, r, false);
+        vec3 reflected = reflected_hit.t >= 1e29
+                             ? sky(r)
+                             : shadeDirect(reflected_hit, p + hit.normal * 0.002 + r * reflected_hit.t, r);
+        color = mix(color, reflected * hit.albedo * 1.4, 0.65);
+    }
+    return color;
+}
+
+uint packRGBA(vec3 color)
+{
+    uvec3 c = uvec3(clamp(color, vec3(0.0), vec3(1.0)) * 255.0 + 0.5);
+    return c.x | (c.y << 8) | (c.z << 16) | (255u << 24);
+}
+
+void main()
+{
+    const uint width = uint(rt_params.p0.x);
+    const uint height = uint(rt_params.p0.y);
+    const uint samples = max(1u, uint(rt_params.p0.z));
+    const uint x = gl_GlobalInvocationID.x;
+    const uint y = gl_GlobalInvocationID.y;
+    if (x >= width || y >= height) return;
+
+    const vec3 origin = rt_params.p1.xyz;
+    const float tan_half_fov = rt_params.p1.w;
+    const vec3 right = rt_params.p2.xyz;
+    const float aspect = rt_params.p2.w;
+    const vec3 up = rt_params.p3.xyz;
+    const vec3 forward = rt_params.p4.xyz;
+
+    vec3 sum = vec3(0.0);
+    for (uint s = 0u; s < samples; ++s)
+    {
+        vec2 jitter = vec2(hash12(vec2(x, y) + float(s) * 17.0),
+                           hash12(vec2(y, x) + float(s) * 29.0)) - 0.5;
+        vec2 uv = (vec2(x, y) + 0.5 + jitter) / vec2(width, height) * 2.0 - 1.0;
+        uv.y = -uv.y;
+        vec3 dir = normalize(forward + right * (uv.x * tan_half_fov * aspect) + up * (uv.y * tan_half_fov));
+        sum += shade(origin, dir, true);
+    }
+    output_image.pixels[y * width + x] = packRGBA(sum / float(samples));
+}

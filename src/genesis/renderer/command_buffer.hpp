@@ -107,6 +107,7 @@ namespace Genesis
                 DrawRect,
                 DrawLine2D,
                 DrawImage,
+                DrawSprite,
                 DrawText,
                 DrawLine3D,
                 DrawQuad3D,
@@ -117,6 +118,9 @@ namespace Genesis
 
             RenderTargetId target;          // SetRenderTarget / Blit destination
             RenderTargetId source;          // Blit / DrawImage source
+            RHI::RHITexture *raw_texture = nullptr;   // DrawImage from a plain texture
+            RHI::RHISampler *raw_sampler = nullptr;
+            bool flip_v = false;
             MaterialPtr material;           // DrawMesh
             ECS::Entity entity;             // DrawEntity / SetCameraEntity
             Math::Mat4 m0 = Math::Mat4::identity(); // model / view / text transform
@@ -177,6 +181,14 @@ namespace Genesis
             void drawLine2D(const Math::Vec2 &a, const Math::Vec2 &b, const Math::Color &color, float thickness = 1.0f);
             void drawImage(const RenderTexturePtr &image, float x, float y, float width, float height,
                            const Math::Color &tint = Math::Color::white());
+            // Draws an arbitrary sampled texture (the caller keeps it alive),
+            // e.g. the procedural gaussian falloff used by the splat renderer.
+            void drawImageTexture(RHI::RHITexture *texture, RHI::RHISampler *sampler, float x, float y, float width,
+                                  float height, const Math::Color &tint = Math::Color::white(), bool flip_v = false);
+            // Textured quad with an explicit UV rect (sprite sheets).
+            void drawSprite(RHI::RHITexture *texture, RHI::RHISampler *sampler, float x, float y, float width,
+                            float height, const Math::Vec2 &uv0, const Math::Vec2 &uv1,
+                            const Math::Color &tint = Math::Color::white());
             void drawText(const std::string &text, float x, float y, float size, const Math::Color &color,
                           Text::TextAlign align = Text::TextAlign::Left, float outline = 0.0f,
                           const Math::Color &outline_color = Math::Color::black());

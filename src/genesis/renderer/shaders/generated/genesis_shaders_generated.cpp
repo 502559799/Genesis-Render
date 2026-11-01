@@ -6,6 +6,466 @@
 namespace Genesis {
 namespace Shaders {
 namespace {
+// ---- anim/vertex_anim.comp (OpenGL 4.10 variant) ----
+static const char anim_vertex_anim_comp_glsl[] =
+    "#version 430\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - 3D vertex animation (compute)\n"
+    " *\n"
+    " * Copies the rest-pose vertex buffer into the animated buffer and applies a\n"
+    " * travelling sine deformation to position + normal.  The vertex layout is the\n"
+    " * engine's interleaved 88-byte Vertex (22 floats).\n"
+    " *\n"
+    " * binding 0 : base vertex buffer   (read only)\n"
+    " * binding 1 : animated vertex buffer (write only)\n"
+    " * binding 2 : parameters           (vec4 p0 = time, amplitude, frequency, speed;\n"
+    " *                                   vec4 p1 = vertex count, ...)\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for all three backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_MSL /\n"
+    " * GENESIS_GLSL before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   Metal  : GLSL 450 compiled to SPIR-V, then translated to MSL by\n"
+    " *            SPIRV-Cross (--msl-decoration-binding).  Every descriptor is\n"
+    " *            flattened into set 0 with binding = set * 8 + binding, which\n"
+    " *            becomes the Metal [[buffer(n)]] / [[texture(n)]] / [[sampler(n)]]\n"
+    " *            slot.  Push constants become a uniform block at buffer 24 and\n"
+    " *            vertex streams live at buffer 30 (see metal_backend.mm).\n"
+    " *            Samplers must therefore only be declared in sets 0 and 1\n"
+    " *            (Metal exposes 16 sampler slots per stage).\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#if defined(GENESIS_MSL)\n"
+    "#define GS_MSL_SLOT(gs_set, gs_binding) ((gs_set) * 8 + (gs_binding))\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#elif defined(GENESIS_VK)\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "layout(local_size_x = 64) in;\n"
+    "\n"
+    "GS_SSBO_RO(0, 0, BaseVertexBuffer) { float data[]; } base_vertices;\n"
+    "GS_SSBO_WO(0, 1, AnimatedVertexBuffer) { float data[]; } animated_vertices;\n"
+    "GS_SSBO(0, 2, AnimParams) { vec4 p0; vec4 p1; } anim_params;\n"
+    "\n"
+    "const uint kFloatsPerVertex = 22u;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    const uint index = gl_GlobalInvocationID.x;\n"
+    "    const uint count = uint(anim_params.p1.x);\n"
+    "    if (index >= count) return;\n"
+    "\n"
+    "    const uint base = index * kFloatsPerVertex;\n"
+    "    for (uint i = 0u; i < kFloatsPerVertex; ++i)\n"
+    "        animated_vertices.data[base + i] = base_vertices.data[base + i];\n"
+    "\n"
+    "    vec3 p = vec3(base_vertices.data[base + 0u],\n"
+    "                  base_vertices.data[base + 1u],\n"
+    "                  base_vertices.data[base + 2u]);\n"
+    "    const float time = anim_params.p0.x;\n"
+    "    const float amplitude = anim_params.p0.y;\n"
+    "    const float frequency = anim_params.p0.z;\n"
+    "    const float speed = anim_params.p0.w;\n"
+    "\n"
+    "    const float wave = sin(p.x * frequency + time * speed) *\n"
+    "                       cos(p.z * frequency * 0.7 + time * speed * 0.6);\n"
+    "    p.y += wave * amplitude;\n"
+    "    p.x += sin(p.y * frequency * 0.5 + time * speed * 0.4) * amplitude * 0.25;\n"
+    "\n"
+    "    // Normal of the displaced surface (approximation that keeps lighting\n"
+    "    // responsive without a second pass).\n"
+    "    const float dx = cos(p.x * frequency + time * speed) * frequency * amplitude;\n"
+    "    const float dz = cos(p.z * frequency * 0.7 + time * speed * 0.6) * frequency * amplitude * 0.7;\n"
+    "    vec3 n = normalize(vec3(-dx, 1.0, -dz));\n"
+    "\n"
+    "    animated_vertices.data[base + 0u] = p.x;\n"
+    "    animated_vertices.data[base + 1u] = p.y;\n"
+    "    animated_vertices.data[base + 2u] = p.z;\n"
+    "    animated_vertices.data[base + 3u] = n.x;\n"
+    "    animated_vertices.data[base + 4u] = n.y;\n"
+    "    animated_vertices.data[base + 5u] = n.z;\n"
+    "}\n"
+    "";
+static const size_t anim_vertex_anim_comp_glsl_size = 11247;
+
+// ---- anim/vertex_anim.comp (SPIR-V, Vulkan 1.1) ----
+static const uint32_t anim_vertex_anim_comp_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000bu, 0x000000e0u, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x0006000fu, 0x00000005u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x0000000bu, 0x00060010u, 0x00000004u,
+    0x00000011u, 0x00000040u, 0x00000001u, 0x00000001u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u,
+    0x00000004u, 0x6e69616du, 0x00000000u, 0x00040005u, 0x00000008u, 0x65646e69u, 0x00000078u, 0x00080005u,
+    0x0000000bu, 0x475f6c67u, 0x61626f6cu, 0x766e496cu, 0x7461636fu, 0x496e6f69u, 0x00000044u, 0x00040005u,
+    0x00000010u, 0x6e756f63u, 0x00000074u, 0x00050005u, 0x00000013u, 0x6d696e41u, 0x61726150u, 0x0000736du,
+    0x00040006u, 0x00000013u, 0x00000000u, 0x00003070u, 0x00040006u, 0x00000013u, 0x00000001u, 0x00003170u,
+    0x00050005u, 0x00000015u, 0x6d696e61u, 0x7261705fu, 0x00736d61u, 0x00040005u, 0x00000023u, 0x65736162u,
+    0x00000000u, 0x00030005u, 0x00000027u, 0x00000069u, 0x00080005u, 0x00000030u, 0x6d696e41u, 0x64657461u,
+    0x74726556u, 0x75427865u, 0x72656666u, 0x00000000u, 0x00050006u, 0x00000030u, 0x00000000u, 0x61746164u,
+    0x00000000u, 0x00070005u, 0x00000032u, 0x6d696e61u, 0x64657461u, 0x7265765fu, 0x65636974u, 0x00000073u,
+    0x00070005u, 0x00000038u, 0x65736142u, 0x74726556u, 0x75427865u, 0x72656666u, 0x00000000u, 0x00050006u,
+    0x00000038u, 0x00000000u, 0x61746164u, 0x00000000u, 0x00060005u, 0x0000003au, 0x65736162u, 0x7265765fu,
+    0x65636974u, 0x00000073u, 0x00030005u, 0x00000045u, 0x00000070u, 0x00040005u, 0x00000056u, 0x656d6974u,
+    0x00000000u, 0x00050005u, 0x00000059u, 0x6c706d61u, 0x64757469u, 0x00000065u, 0x00050005u, 0x0000005cu,
+    0x71657266u, 0x636e6575u, 0x00000079u, 0x00040005u, 0x0000005fu, 0x65657073u, 0x00000064u, 0x00040005u,
+    0x00000063u, 0x65766177u, 0x00000000u, 0x00030005u, 0x00000097u, 0x00007864u, 0x00030005u, 0x000000a5u,
+    0x00007a64u, 0x00030005u, 0x000000b6u, 0x0000006eu, 0x00040047u, 0x0000000bu, 0x0000000bu, 0x0000001cu,
+    0x00050048u, 0x00000013u, 0x00000000u, 0x00000023u, 0x00000000u, 0x00050048u, 0x00000013u, 0x00000001u,
+    0x00000023u, 0x00000010u, 0x00030047u, 0x00000013u, 0x00000002u, 0x00040047u, 0x00000015u, 0x00000022u,
+    0x00000000u, 0x00040047u, 0x00000015u, 0x00000021u, 0x00000002u, 0x00040047u, 0x0000002fu, 0x00000006u,
+    0x00000004u, 0x00040048u, 0x00000030u, 0x00000000u, 0x00000019u, 0x00050048u, 0x00000030u, 0x00000000u,
+    0x00000023u, 0x00000000u, 0x00030047u, 0x00000030u, 0x00000002u, 0x00040047u, 0x00000032u, 0x00000022u,
+    0x00000000u, 0x00040047u, 0x00000032u, 0x00000021u, 0x00000001u, 0x00040047u, 0x00000037u, 0x00000006u,
+    0x00000004u, 0x00040048u, 0x00000038u, 0x00000000u, 0x00000018u, 0x00050048u, 0x00000038u, 0x00000000u,
+    0x00000023u, 0x00000000u, 0x00030047u, 0x00000038u, 0x00000002u, 0x00040047u, 0x0000003au, 0x00000022u,
+    0x00000000u, 0x00040047u, 0x0000003au, 0x00000021u, 0x00000000u, 0x00040047u, 0x000000dfu, 0x0000000bu,
+    0x00000019u, 0x00020013u, 0x00000002u, 0x00030021u, 0x00000003u, 0x00000002u, 0x00040015u, 0x00000006u,
+    0x00000020u, 0x00000000u, 0x00040020u, 0x00000007u, 0x00000007u, 0x00000006u, 0x00040017u, 0x00000009u,
+    0x00000006u, 0x00000003u, 0x00040020u, 0x0000000au, 0x00000001u, 0x00000009u, 0x0004003bu, 0x0000000au,
+    0x0000000bu, 0x00000001u, 0x0004002bu, 0x00000006u, 0x0000000cu, 0x00000000u, 0x00040020u, 0x0000000du,
+    0x00000001u, 0x00000006u, 0x00030016u, 0x00000011u, 0x00000020u, 0x00040017u, 0x00000012u, 0x00000011u,
+    0x00000004u, 0x0004001eu, 0x00000013u, 0x00000012u, 0x00000012u, 0x00040020u, 0x00000014u, 0x0000000cu,
+    0x00000013u, 0x0004003bu, 0x00000014u, 0x00000015u, 0x0000000cu, 0x00040015u, 0x00000016u, 0x00000020u,
+    0x00000001u, 0x0004002bu, 0x00000016u, 0x00000017u, 0x00000001u, 0x00040020u, 0x00000018u, 0x0000000cu,
+    0x00000011u, 0x00020014u, 0x0000001eu, 0x0004002bu, 0x00000006u, 0x00000025u, 0x00000016u, 0x0003001du,
+    0x0000002fu, 0x00000011u, 0x0003001eu, 0x00000030u, 0x0000002fu, 0x00040020u, 0x00000031u, 0x0000000cu,
+    0x00000030u, 0x0004003bu, 0x00000031u, 0x00000032u, 0x0000000cu, 0x0004002bu, 0x00000016u, 0x00000033u,
+    0x00000000u, 0x0003001du, 0x00000037u, 0x00000011u, 0x0003001eu, 0x00000038u, 0x00000037u, 0x00040020u,
+    0x00000039u, 0x0000000cu, 0x00000038u, 0x0004003bu, 0x00000039u, 0x0000003au, 0x0000000cu, 0x00040017u,
+    0x00000043u, 0x00000011u, 0x00000003u, 0x00040020u, 0x00000044u, 0x00000007u, 0x00000043u, 0x0004002bu,
+    0x00000006u, 0x0000004bu, 0x00000001u, 0x0004002bu, 0x00000006u, 0x00000050u, 0x00000002u, 0x00040020u,
+    0x00000055u, 0x00000007u, 0x00000011u, 0x0004002bu, 0x00000006u, 0x00000060u, 0x00000003u, 0x0004002bu,
+    0x00000011u, 0x00000071u, 0x3f333333u, 0x0004002bu, 0x00000011u, 0x00000076u, 0x3f19999au, 0x0004002bu,
+    0x00000011u, 0x00000086u, 0x3f000000u, 0x0004002bu, 0x00000011u, 0x0000008bu, 0x3ecccccdu, 0x0004002bu,
+    0x00000011u, 0x00000091u, 0x3e800000u, 0x0004002bu, 0x00000011u, 0x000000b9u, 0x3f800000u, 0x0004002bu,
+    0x00000006u, 0x000000d3u, 0x00000004u, 0x0004002bu, 0x00000006u, 0x000000d9u, 0x00000005u, 0x0004002bu,
+    0x00000006u, 0x000000deu, 0x00000040u, 0x0006002cu, 0x00000009u, 0x000000dfu, 0x000000deu, 0x0000004bu,
+    0x0000004bu, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u,
+    0x0004003bu, 0x00000007u, 0x00000008u, 0x00000007u, 0x0004003bu, 0x00000007u, 0x00000010u, 0x00000007u,
+    0x0004003bu, 0x00000007u, 0x00000023u, 0x00000007u, 0x0004003bu, 0x00000007u, 0x00000027u, 0x00000007u,
+    0x0004003bu, 0x00000044u, 0x00000045u, 0x00000007u, 0x0004003bu, 0x00000055u, 0x00000056u, 0x00000007u,
+    0x0004003bu, 0x00000055u, 0x00000059u, 0x00000007u, 0x0004003bu, 0x00000055u, 0x0000005cu, 0x00000007u,
+    0x0004003bu, 0x00000055u, 0x0000005fu, 0x00000007u, 0x0004003bu, 0x00000055u, 0x00000063u, 0x00000007u,
+    0x0004003bu, 0x00000055u, 0x00000097u, 0x00000007u, 0x0004003bu, 0x00000055u, 0x000000a5u, 0x00000007u,
+    0x0004003bu, 0x00000044u, 0x000000b6u, 0x00000007u, 0x00050041u, 0x0000000du, 0x0000000eu, 0x0000000bu,
+    0x0000000cu, 0x0004003du, 0x00000006u, 0x0000000fu, 0x0000000eu, 0x0003003eu, 0x00000008u, 0x0000000fu,
+    0x00060041u, 0x00000018u, 0x00000019u, 0x00000015u, 0x00000017u, 0x0000000cu, 0x0004003du, 0x00000011u,
+    0x0000001au, 0x00000019u, 0x0004006du, 0x00000006u, 0x0000001bu, 0x0000001au, 0x0003003eu, 0x00000010u,
+    0x0000001bu, 0x0004003du, 0x00000006u, 0x0000001cu, 0x00000008u, 0x0004003du, 0x00000006u, 0x0000001du,
+    0x00000010u, 0x000500aeu, 0x0000001eu, 0x0000001fu, 0x0000001cu, 0x0000001du, 0x000300f7u, 0x00000021u,
+    0x00000000u, 0x000400fau, 0x0000001fu, 0x00000020u, 0x00000021u, 0x000200f8u, 0x00000020u, 0x000100fdu,
+    0x000200f8u, 0x00000021u, 0x0004003du, 0x00000006u, 0x00000024u, 0x00000008u, 0x00050084u, 0x00000006u,
+    0x00000026u, 0x00000024u, 0x00000025u, 0x0003003eu, 0x00000023u, 0x00000026u, 0x0003003eu, 0x00000027u,
+    0x0000000cu, 0x000200f9u, 0x00000028u, 0x000200f8u, 0x00000028u, 0x000400f6u, 0x0000002au, 0x0000002bu,
+    0x00000000u, 0x000200f9u, 0x0000002cu, 0x000200f8u, 0x0000002cu, 0x0004003du, 0x00000006u, 0x0000002du,
+    0x00000027u, 0x000500b0u, 0x0000001eu, 0x0000002eu, 0x0000002du, 0x00000025u, 0x000400fau, 0x0000002eu,
+    0x00000029u, 0x0000002au, 0x000200f8u, 0x00000029u, 0x0004003du, 0x00000006u, 0x00000034u, 0x00000023u,
+    0x0004003du, 0x00000006u, 0x00000035u, 0x00000027u, 0x00050080u, 0x00000006u, 0x00000036u, 0x00000034u,
+    0x00000035u, 0x0004003du, 0x00000006u, 0x0000003bu, 0x00000023u, 0x0004003du, 0x00000006u, 0x0000003cu,
+    0x00000027u, 0x00050080u, 0x00000006u, 0x0000003du, 0x0000003bu, 0x0000003cu, 0x00060041u, 0x00000018u,
+    0x0000003eu, 0x0000003au, 0x00000033u, 0x0000003du, 0x0004003du, 0x00000011u, 0x0000003fu, 0x0000003eu,
+    0x00060041u, 0x00000018u, 0x00000040u, 0x00000032u, 0x00000033u, 0x00000036u, 0x0003003eu, 0x00000040u,
+    0x0000003fu, 0x000200f9u, 0x0000002bu, 0x000200f8u, 0x0000002bu, 0x0004003du, 0x00000006u, 0x00000041u,
+    0x00000027u, 0x00050080u, 0x00000006u, 0x00000042u, 0x00000041u, 0x00000017u, 0x0003003eu, 0x00000027u,
+    0x00000042u, 0x000200f9u, 0x00000028u, 0x000200f8u, 0x0000002au, 0x0004003du, 0x00000006u, 0x00000046u,
+    0x00000023u, 0x00050080u, 0x00000006u, 0x00000047u, 0x00000046u, 0x0000000cu, 0x00060041u, 0x00000018u,
+    0x00000048u, 0x0000003au, 0x00000033u, 0x00000047u, 0x0004003du, 0x00000011u, 0x00000049u, 0x00000048u,
+    0x0004003du, 0x00000006u, 0x0000004au, 0x00000023u, 0x00050080u, 0x00000006u, 0x0000004cu, 0x0000004au,
+    0x0000004bu, 0x00060041u, 0x00000018u, 0x0000004du, 0x0000003au, 0x00000033u, 0x0000004cu, 0x0004003du,
+    0x00000011u, 0x0000004eu, 0x0000004du, 0x0004003du, 0x00000006u, 0x0000004fu, 0x00000023u, 0x00050080u,
+    0x00000006u, 0x00000051u, 0x0000004fu, 0x00000050u, 0x00060041u, 0x00000018u, 0x00000052u, 0x0000003au,
+    0x00000033u, 0x00000051u, 0x0004003du, 0x00000011u, 0x00000053u, 0x00000052u, 0x00060050u, 0x00000043u,
+    0x00000054u, 0x00000049u, 0x0000004eu, 0x00000053u, 0x0003003eu, 0x00000045u, 0x00000054u, 0x00060041u,
+    0x00000018u, 0x00000057u, 0x00000015u, 0x00000033u, 0x0000000cu, 0x0004003du, 0x00000011u, 0x00000058u,
+    0x00000057u, 0x0003003eu, 0x00000056u, 0x00000058u, 0x00060041u, 0x00000018u, 0x0000005au, 0x00000015u,
+    0x00000033u, 0x0000004bu, 0x0004003du, 0x00000011u, 0x0000005bu, 0x0000005au, 0x0003003eu, 0x00000059u,
+    0x0000005bu, 0x00060041u, 0x00000018u, 0x0000005du, 0x00000015u, 0x00000033u, 0x00000050u, 0x0004003du,
+    0x00000011u, 0x0000005eu, 0x0000005du, 0x0003003eu, 0x0000005cu, 0x0000005eu, 0x00060041u, 0x00000018u,
+    0x00000061u, 0x00000015u, 0x00000033u, 0x00000060u, 0x0004003du, 0x00000011u, 0x00000062u, 0x00000061u,
+    0x0003003eu, 0x0000005fu, 0x00000062u, 0x00050041u, 0x00000055u, 0x00000064u, 0x00000045u, 0x0000000cu,
+    0x0004003du, 0x00000011u, 0x00000065u, 0x00000064u, 0x0004003du, 0x00000011u, 0x00000066u, 0x0000005cu,
+    0x00050085u, 0x00000011u, 0x00000067u, 0x00000065u, 0x00000066u, 0x0004003du, 0x00000011u, 0x00000068u,
+    0x00000056u, 0x0004003du, 0x00000011u, 0x00000069u, 0x0000005fu, 0x00050085u, 0x00000011u, 0x0000006au,
+    0x00000068u, 0x00000069u, 0x00050081u, 0x00000011u, 0x0000006bu, 0x00000067u, 0x0000006au, 0x0006000cu,
+    0x00000011u, 0x0000006cu, 0x00000001u, 0x0000000du, 0x0000006bu, 0x00050041u, 0x00000055u, 0x0000006du,
+    0x00000045u, 0x00000050u, 0x0004003du, 0x00000011u, 0x0000006eu, 0x0000006du, 0x0004003du, 0x00000011u,
+    0x0000006fu, 0x0000005cu, 0x00050085u, 0x00000011u, 0x00000070u, 0x0000006eu, 0x0000006fu, 0x00050085u,
+    0x00000011u, 0x00000072u, 0x00000070u, 0x00000071u, 0x0004003du, 0x00000011u, 0x00000073u, 0x00000056u,
+    0x0004003du, 0x00000011u, 0x00000074u, 0x0000005fu, 0x00050085u, 0x00000011u, 0x00000075u, 0x00000073u,
+    0x00000074u, 0x00050085u, 0x00000011u, 0x00000077u, 0x00000075u, 0x00000076u, 0x00050081u, 0x00000011u,
+    0x00000078u, 0x00000072u, 0x00000077u, 0x0006000cu, 0x00000011u, 0x00000079u, 0x00000001u, 0x0000000eu,
+    0x00000078u, 0x00050085u, 0x00000011u, 0x0000007au, 0x0000006cu, 0x00000079u, 0x0003003eu, 0x00000063u,
+    0x0000007au, 0x0004003du, 0x00000011u, 0x0000007bu, 0x00000063u, 0x0004003du, 0x00000011u, 0x0000007cu,
+    0x00000059u, 0x00050085u, 0x00000011u, 0x0000007du, 0x0000007bu, 0x0000007cu, 0x00050041u, 0x00000055u,
+    0x0000007eu, 0x00000045u, 0x0000004bu, 0x0004003du, 0x00000011u, 0x0000007fu, 0x0000007eu, 0x00050081u,
+    0x00000011u, 0x00000080u, 0x0000007fu, 0x0000007du, 0x00050041u, 0x00000055u, 0x00000081u, 0x00000045u,
+    0x0000004bu, 0x0003003eu, 0x00000081u, 0x00000080u, 0x00050041u, 0x00000055u, 0x00000082u, 0x00000045u,
+    0x0000004bu, 0x0004003du, 0x00000011u, 0x00000083u, 0x00000082u, 0x0004003du, 0x00000011u, 0x00000084u,
+    0x0000005cu, 0x00050085u, 0x00000011u, 0x00000085u, 0x00000083u, 0x00000084u, 0x00050085u, 0x00000011u,
+    0x00000087u, 0x00000085u, 0x00000086u, 0x0004003du, 0x00000011u, 0x00000088u, 0x00000056u, 0x0004003du,
+    0x00000011u, 0x00000089u, 0x0000005fu, 0x00050085u, 0x00000011u, 0x0000008au, 0x00000088u, 0x00000089u,
+    0x00050085u, 0x00000011u, 0x0000008cu, 0x0000008au, 0x0000008bu, 0x00050081u, 0x00000011u, 0x0000008du,
+    0x00000087u, 0x0000008cu, 0x0006000cu, 0x00000011u, 0x0000008eu, 0x00000001u, 0x0000000du, 0x0000008du,
+    0x0004003du, 0x00000011u, 0x0000008fu, 0x00000059u, 0x00050085u, 0x00000011u, 0x00000090u, 0x0000008eu,
+    0x0000008fu, 0x00050085u, 0x00000011u, 0x00000092u, 0x00000090u, 0x00000091u, 0x00050041u, 0x00000055u,
+    0x00000093u, 0x00000045u, 0x0000000cu, 0x0004003du, 0x00000011u, 0x00000094u, 0x00000093u, 0x00050081u,
+    0x00000011u, 0x00000095u, 0x00000094u, 0x00000092u, 0x00050041u, 0x00000055u, 0x00000096u, 0x00000045u,
+    0x0000000cu, 0x0003003eu, 0x00000096u, 0x00000095u, 0x00050041u, 0x00000055u, 0x00000098u, 0x00000045u,
+    0x0000000cu, 0x0004003du, 0x00000011u, 0x00000099u, 0x00000098u, 0x0004003du, 0x00000011u, 0x0000009au,
+    0x0000005cu, 0x00050085u, 0x00000011u, 0x0000009bu, 0x00000099u, 0x0000009au, 0x0004003du, 0x00000011u,
+    0x0000009cu, 0x00000056u, 0x0004003du, 0x00000011u, 0x0000009du, 0x0000005fu, 0x00050085u, 0x00000011u,
+    0x0000009eu, 0x0000009cu, 0x0000009du, 0x00050081u, 0x00000011u, 0x0000009fu, 0x0000009bu, 0x0000009eu,
+    0x0006000cu, 0x00000011u, 0x000000a0u, 0x00000001u, 0x0000000eu, 0x0000009fu, 0x0004003du, 0x00000011u,
+    0x000000a1u, 0x0000005cu, 0x00050085u, 0x00000011u, 0x000000a2u, 0x000000a0u, 0x000000a1u, 0x0004003du,
+    0x00000011u, 0x000000a3u, 0x00000059u, 0x00050085u, 0x00000011u, 0x000000a4u, 0x000000a2u, 0x000000a3u,
+    0x0003003eu, 0x00000097u, 0x000000a4u, 0x00050041u, 0x00000055u, 0x000000a6u, 0x00000045u, 0x00000050u,
+    0x0004003du, 0x00000011u, 0x000000a7u, 0x000000a6u, 0x0004003du, 0x00000011u, 0x000000a8u, 0x0000005cu,
+    0x00050085u, 0x00000011u, 0x000000a9u, 0x000000a7u, 0x000000a8u, 0x00050085u, 0x00000011u, 0x000000aau,
+    0x000000a9u, 0x00000071u, 0x0004003du, 0x00000011u, 0x000000abu, 0x00000056u, 0x0004003du, 0x00000011u,
+    0x000000acu, 0x0000005fu, 0x00050085u, 0x00000011u, 0x000000adu, 0x000000abu, 0x000000acu, 0x00050085u,
+    0x00000011u, 0x000000aeu, 0x000000adu, 0x00000076u, 0x00050081u, 0x00000011u, 0x000000afu, 0x000000aau,
+    0x000000aeu, 0x0006000cu, 0x00000011u, 0x000000b0u, 0x00000001u, 0x0000000eu, 0x000000afu, 0x0004003du,
+    0x00000011u, 0x000000b1u, 0x0000005cu, 0x00050085u, 0x00000011u, 0x000000b2u, 0x000000b0u, 0x000000b1u,
+    0x0004003du, 0x00000011u, 0x000000b3u, 0x00000059u, 0x00050085u, 0x00000011u, 0x000000b4u, 0x000000b2u,
+    0x000000b3u, 0x00050085u, 0x00000011u, 0x000000b5u, 0x000000b4u, 0x00000071u, 0x0003003eu, 0x000000a5u,
+    0x000000b5u, 0x0004003du, 0x00000011u, 0x000000b7u, 0x00000097u, 0x0004007fu, 0x00000011u, 0x000000b8u,
+    0x000000b7u, 0x0004003du, 0x00000011u, 0x000000bau, 0x000000a5u, 0x0004007fu, 0x00000011u, 0x000000bbu,
+    0x000000bau, 0x00060050u, 0x00000043u, 0x000000bcu, 0x000000b8u, 0x000000b9u, 0x000000bbu, 0x0006000cu,
+    0x00000043u, 0x000000bdu, 0x00000001u, 0x00000045u, 0x000000bcu, 0x0003003eu, 0x000000b6u, 0x000000bdu,
+    0x0004003du, 0x00000006u, 0x000000beu, 0x00000023u, 0x00050080u, 0x00000006u, 0x000000bfu, 0x000000beu,
+    0x0000000cu, 0x00050041u, 0x00000055u, 0x000000c0u, 0x00000045u, 0x0000000cu, 0x0004003du, 0x00000011u,
+    0x000000c1u, 0x000000c0u, 0x00060041u, 0x00000018u, 0x000000c2u, 0x00000032u, 0x00000033u, 0x000000bfu,
+    0x0003003eu, 0x000000c2u, 0x000000c1u, 0x0004003du, 0x00000006u, 0x000000c3u, 0x00000023u, 0x00050080u,
+    0x00000006u, 0x000000c4u, 0x000000c3u, 0x0000004bu, 0x00050041u, 0x00000055u, 0x000000c5u, 0x00000045u,
+    0x0000004bu, 0x0004003du, 0x00000011u, 0x000000c6u, 0x000000c5u, 0x00060041u, 0x00000018u, 0x000000c7u,
+    0x00000032u, 0x00000033u, 0x000000c4u, 0x0003003eu, 0x000000c7u, 0x000000c6u, 0x0004003du, 0x00000006u,
+    0x000000c8u, 0x00000023u, 0x00050080u, 0x00000006u, 0x000000c9u, 0x000000c8u, 0x00000050u, 0x00050041u,
+    0x00000055u, 0x000000cau, 0x00000045u, 0x00000050u, 0x0004003du, 0x00000011u, 0x000000cbu, 0x000000cau,
+    0x00060041u, 0x00000018u, 0x000000ccu, 0x00000032u, 0x00000033u, 0x000000c9u, 0x0003003eu, 0x000000ccu,
+    0x000000cbu, 0x0004003du, 0x00000006u, 0x000000cdu, 0x00000023u, 0x00050080u, 0x00000006u, 0x000000ceu,
+    0x000000cdu, 0x00000060u, 0x00050041u, 0x00000055u, 0x000000cfu, 0x000000b6u, 0x0000000cu, 0x0004003du,
+    0x00000011u, 0x000000d0u, 0x000000cfu, 0x00060041u, 0x00000018u, 0x000000d1u, 0x00000032u, 0x00000033u,
+    0x000000ceu, 0x0003003eu, 0x000000d1u, 0x000000d0u, 0x0004003du, 0x00000006u, 0x000000d2u, 0x00000023u,
+    0x00050080u, 0x00000006u, 0x000000d4u, 0x000000d2u, 0x000000d3u, 0x00050041u, 0x00000055u, 0x000000d5u,
+    0x000000b6u, 0x0000004bu, 0x0004003du, 0x00000011u, 0x000000d6u, 0x000000d5u, 0x00060041u, 0x00000018u,
+    0x000000d7u, 0x00000032u, 0x00000033u, 0x000000d4u, 0x0003003eu, 0x000000d7u, 0x000000d6u, 0x0004003du,
+    0x00000006u, 0x000000d8u, 0x00000023u, 0x00050080u, 0x00000006u, 0x000000dau, 0x000000d8u, 0x000000d9u,
+    0x00050041u, 0x00000055u, 0x000000dbu, 0x000000b6u, 0x00000050u, 0x0004003du, 0x00000011u, 0x000000dcu,
+    0x000000dbu, 0x00060041u, 0x00000018u, 0x000000ddu, 0x00000032u, 0x00000033u, 0x000000dau, 0x0003003eu,
+    0x000000ddu, 0x000000dcu, 0x000100fdu, 0x00010038u,
+};
+static const size_t anim_vertex_anim_comp_spirv_words = 1292;
+
+// ---- anim/vertex_anim.comp (Metal Shading Language 2.1, via SPIRV-Cross) ----
+static const char anim_vertex_anim_comp_msl[] =
+    "#include <metal_stdlib>\n"
+    "#include <simd/simd.h>\n"
+    "\n"
+    "using namespace metal;\n"
+    "\n"
+    "struct AnimParams\n"
+    "{\n"
+    "    float4 p0;\n"
+    "    float4 p1;\n"
+    "};\n"
+    "\n"
+    "struct AnimatedVertexBuffer\n"
+    "{\n"
+    "    float data[1];\n"
+    "};\n"
+    "\n"
+    "struct BaseVertexBuffer\n"
+    "{\n"
+    "    float data[1];\n"
+    "};\n"
+    "\n"
+    "constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(64u, 1u, 1u);\n"
+    "\n"
+    "kernel void main0(const device BaseVertexBuffer& base_vertices [[buffer(0)]], device AnimatedVertexBuffer& animated_vertices [[buffer(1)]], device AnimParams& anim_params [[buffer(2)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n"
+    "{\n"
+    "    uint index = gl_GlobalInvocationID.x;\n"
+    "    uint count = uint(((device float*)&anim_params.p1)[0u]);\n"
+    "    if (index >= count)\n"
+    "    {\n"
+    "        return;\n"
+    "    }\n"
+    "    uint base = index * 22u;\n"
+    "    for (uint i = 0u; i < 22u; i++)\n"
+    "    {\n"
+    "        animated_vertices.data[base + i] = base_vertices.data[base + i];\n"
+    "    }\n"
+    "    float3 p = float3(base_vertices.data[base + 0u], base_vertices.data[base + 1u], base_vertices.data[base + 2u]);\n"
+    "    float time = ((device float*)&anim_params.p0)[0u];\n"
+    "    float amplitude = ((device float*)&anim_params.p0)[1u];\n"
+    "    float frequency = ((device float*)&anim_params.p0)[2u];\n"
+    "    float speed = ((device float*)&anim_params.p0)[3u];\n"
+    "    float wave = sin((p.x * frequency) + (time * speed)) * cos(((p.z * frequency) * 0.699999988079071044921875) + ((time * speed) * 0.60000002384185791015625));\n"
+    "    p.y += (wave * amplitude);\n"
+    "    p.x += ((sin(((p.y * frequency) * 0.5) + ((time * speed) * 0.4000000059604644775390625)) * amplitude) * 0.25);\n"
+    "    float dx = (cos((p.x * frequency) + (time * speed)) * frequency) * amplitude;\n"
+    "    float dz = ((cos(((p.z * frequency) * 0.699999988079071044921875) + ((time * speed) * 0.60000002384185791015625)) * frequency) * amplitude) * 0.699999988079071044921875;\n"
+    "    float3 n = fast::normalize(float3(-dx, 1.0, -dz));\n"
+    "    animated_vertices.data[base + 0u] = p.x;\n"
+    "    animated_vertices.data[base + 1u] = p.y;\n"
+    "    animated_vertices.data[base + 2u] = p.z;\n"
+    "    animated_vertices.data[base + 3u] = n.x;\n"
+    "    animated_vertices.data[base + 4u] = n.y;\n"
+    "    animated_vertices.data[base + 5u] = n.z;\n"
+    "}\n"
+    "\n"
+    "";
+static const size_t anim_vertex_anim_comp_msl_size = 2088;
+
 // ---- common/fullscreen.vert (OpenGL 4.10 variant) ----
 static const char common_fullscreen_vert_glsl[] =
     "#version 410\n"
@@ -74,6 +534,9 @@ static const char common_fullscreen_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -82,6 +545,9 @@ static const char common_fullscreen_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -90,6 +556,11 @@ static const char common_fullscreen_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -187,7 +658,7 @@ static const char common_fullscreen_vert_glsl[] =
     "    gl_Position = vec4(a_position, 0.0, 1.0);\n"
     "}\n"
     "";
-static const size_t common_fullscreen_vert_glsl_size = 8218;
+static const size_t common_fullscreen_vert_glsl_size = 9387;
 
 // ---- common/fullscreen.vert (SPIR-V, Vulkan 1.1) ----
 static const uint32_t common_fullscreen_vert_spirv[] = {
@@ -330,6 +801,9 @@ static const char ibl_brdf_lut_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -338,6 +812,9 @@ static const char ibl_brdf_lut_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -346,6 +823,11 @@ static const char ibl_brdf_lut_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -757,7 +1239,7 @@ static const char ibl_brdf_lut_frag_glsl[] =
     "    out_color = vec4(gsSaturate(brdf.x), gsSaturate(brdf.y), 0.0, 1.0);\n"
     "}\n"
     "";
-static const size_t ibl_brdf_lut_frag_glsl_size = 19920;
+static const size_t ibl_brdf_lut_frag_glsl_size = 21089;
 
 // ---- ibl/brdf_lut.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ibl_brdf_lut_frag_spirv[] = {
@@ -1110,11 +1592,11 @@ static const char ibl_brdf_lut_frag_msl[] =
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
-    "float2 integrateBRDF(thread const float& NoV, thread const float& roughness, constant IBLParams& _239)\n"
+    "float2 integrateBRDF(thread const float& NoV, thread const float& roughness, constant IBLParams& v_239)\n"
     "{\n"
     "    float3 V = float3(sqrt(1.0 - (NoV * NoV)), 0.0, NoV);\n"
     "    float3 N = float3(0.0, 0.0, 1.0);\n"
-    "    uint sample_count = uint(fast::max(_239.u_ibl_a.w, 256.0));\n"
+    "    uint sample_count = uint(fast::max(v_239.u_ibl_a.w, 256.0));\n"
     "    float A = 0.0;\n"
     "    float B = 0.0;\n"
     "    for (uint i = 0u; i < sample_count; i++)\n"
@@ -1137,7 +1619,7 @@ static const char ibl_brdf_lut_frag_msl[] =
     "            float param_7 = roughness;\n"
     "            float G = geometrySmithIBL(param_5, param_6, param_7);\n"
     "            float g_vis = (G * VoH) / fast::max(NoH * NoV, 9.9999997473787516355514526367188e-06);\n"
-    "            float fc = powr(1.0 - VoH, 5.0);\n"
+    "            float fc = pow(1.0 - VoH, 5.0);\n"
     "            A += ((1.0 - fc) * g_vis);\n"
     "            B += (fc * g_vis);\n"
     "        }\n"
@@ -1151,14 +1633,14 @@ static const char ibl_brdf_lut_frag_msl[] =
     "    return fast::clamp(v, 0.0, 1.0);\n"
     "}\n"
     "\n"
-    "fragment main0_out main0(main0_in in [[stage_in]], constant IBLParams& _239 [[buffer(0)]])\n"
+    "fragment main0_out main0(main0_in in [[stage_in]], constant IBLParams& v_239 [[buffer(0)]])\n"
     "{\n"
     "    main0_out out = {};\n"
     "    float NoV = fast::clamp(in.v_uv.x, 9.9999997473787516355514526367188e-05, 1.0);\n"
     "    float roughness = fast::clamp(in.v_uv.y, 0.04500000178813934326171875, 1.0);\n"
     "    float param = NoV;\n"
     "    float param_1 = roughness;\n"
-    "    float2 brdf = integrateBRDF(param, param_1, _239);\n"
+    "    float2 brdf = integrateBRDF(param, param_1, v_239);\n"
     "    float param_2 = brdf.x;\n"
     "    float param_3 = brdf.y;\n"
     "    out.out_color = float4(gsSaturate(param_2), gsSaturate(param_3), 0.0, 1.0);\n"
@@ -1166,7 +1648,7 @@ static const char ibl_brdf_lut_frag_msl[] =
     "}\n"
     "\n"
     "";
-static const size_t ibl_brdf_lut_frag_msl_size = 4352;
+static const size_t ibl_brdf_lut_frag_msl_size = 4355;
 
 // ---- ibl/equirect_to_cube.frag (OpenGL 4.10 variant) ----
 static const char ibl_equirect_to_cube_frag_glsl[] =
@@ -1236,6 +1718,9 @@ static const char ibl_equirect_to_cube_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -1244,6 +1729,9 @@ static const char ibl_equirect_to_cube_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -1252,6 +1740,11 @@ static const char ibl_equirect_to_cube_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -1597,7 +2090,7 @@ static const char ibl_equirect_to_cube_frag_glsl[] =
     "    out_color = vec4(max(color, vec3(0.0)), 1.0);\n"
     "}\n"
     "";
-static const size_t ibl_equirect_to_cube_frag_glsl_size = 17467;
+static const size_t ibl_equirect_to_cube_frag_glsl_size = 18636;
 
 // ---- ibl/equirect_to_cube.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ibl_equirect_to_cube_frag_spirv[] = {
@@ -1903,6 +2396,9 @@ static const char ibl_irradiance_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -1911,6 +2407,9 @@ static const char ibl_irradiance_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -1919,6 +2418,11 @@ static const char ibl_irradiance_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -2279,7 +2783,7 @@ static const char ibl_irradiance_frag_glsl[] =
     "    out_color = vec4(max(irradiance, vec3(0.0)), 1.0);\n"
     "}\n"
     "";
-static const size_t ibl_irradiance_frag_glsl_size = 18360;
+static const size_t ibl_irradiance_frag_glsl_size = 19529;
 
 // ---- ibl/irradiance.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ibl_irradiance_frag_spirv[] = {
@@ -2608,6 +3112,9 @@ static const char ibl_prefilter_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -2616,6 +3123,9 @@ static const char ibl_prefilter_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -2624,6 +3134,11 @@ static const char ibl_prefilter_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -3025,7 +3540,7 @@ static const char ibl_prefilter_frag_glsl[] =
     "    out_color = vec4(max(prefiltered, vec3(0.0)), 1.0);\n"
     "}\n"
     "";
-static const size_t ibl_prefilter_frag_glsl_size = 19867;
+static const size_t ibl_prefilter_frag_glsl_size = 21036;
 
 // ---- ibl/prefilter.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ibl_prefilter_frag_spirv[] = {
@@ -3587,6 +4102,9 @@ static const char post_effects_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -3595,6 +4113,9 @@ static const char post_effects_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -3603,6 +4124,11 @@ static const char post_effects_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -3863,7 +4389,7 @@ static const char post_effects_frag_glsl[] =
     "    }\n"
     "}\n"
     "";
-static const size_t post_effects_frag_glsl_size = 13833;
+static const size_t post_effects_frag_glsl_size = 15002;
 
 // ---- post/effects.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t post_effects_frag_spirv[] = {
@@ -4428,14 +4954,14 @@ static const char post_effects_frag_msl[] =
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
-    "float3 toDisplayLinear(thread float3& color, constant PostParams& _81)\n"
+    "float3 toDisplayLinear(thread float3& color, constant PostParams& v_81)\n"
     "{\n"
-    "    if (_81.u_post_d.z < 0.5)\n"
+    "    if (v_81.u_post_d.z < 0.5)\n"
     "    {\n"
     "        return color;\n"
     "    }\n"
-    "    color *= fast::max(_81.u_post_a.x, 0.0);\n"
-    "    int mode = int(_81.u_post_a.z + 0.5);\n"
+    "    color *= fast::max(v_81.u_post_a.x, 0.0);\n"
+    "    int mode = int(v_81.u_post_a.z + 0.5);\n"
     "    if (mode == 1)\n"
     "    {\n"
     "        color /= (color + float3(1.0));\n"
@@ -4469,27 +4995,27 @@ static const char post_effects_frag_msl[] =
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
-    "float3 fetchColor(thread const float2& uv, constant PostParams& _81, texture2d<float> u_scene_color, sampler u_scene_colorSmplr)\n"
+    "float3 fetchColor(thread const float2& uv, constant PostParams& v_81, texture2d<float> u_scene_color, sampler u_scene_colorSmplr)\n"
     "{\n"
     "    float3 param = u_scene_color.sample(u_scene_colorSmplr, uv).xyz;\n"
-    "    float3 _143 = toDisplayLinear(param, _81);\n"
+    "    float3 _143 = toDisplayLinear(param, v_81);\n"
     "    return _143;\n"
     "}\n"
     "\n"
-    "fragment main0_out main0(main0_in in [[stage_in]], constant PostParams& _81 [[buffer(0)]], texture2d<float> u_scene_color [[texture(1)]], sampler u_scene_colorSmplr [[sampler(1)]], float4 gl_FragCoord [[position]])\n"
+    "fragment main0_out main0(main0_in in [[stage_in]], constant PostParams& v_81 [[buffer(0)]], texture2d<float> u_scene_color [[texture(1)]], sampler u_scene_colorSmplr [[sampler(1)]], float4 gl_FragCoord [[position]])\n"
     "{\n"
     "    main0_out out = {};\n"
     "    float2 uv = in.v_uv;\n"
-    "    if (_81.u_post_a.w > 0.5)\n"
+    "    if (v_81.u_post_a.w > 0.5)\n"
     "    {\n"
     "        uv.y = 1.0 - uv.y;\n"
     "    }\n"
-    "    int effect = int(_81.u_post_b.w + 0.5);\n"
-    "    float2 texel = _81.u_post_d.xy;\n"
-    "    float strength = _81.u_post_c.x;\n"
+    "    int effect = int(v_81.u_post_b.w + 0.5);\n"
+    "    float2 texel = v_81.u_post_d.xy;\n"
+    "    float strength = v_81.u_post_c.x;\n"
     "    float4 source = u_scene_color.sample(u_scene_colorSmplr, uv);\n"
     "    float3 param = source.xyz;\n"
-    "    float3 _183 = toDisplayLinear(param, _81);\n"
+    "    float3 _183 = toDisplayLinear(param, v_81);\n"
     "    float3 color = _183;\n"
     "    if (effect == 1)\n"
     "    {\n"
@@ -4517,7 +5043,7 @@ static const char post_effects_frag_msl[] =
     "            {\n"
     "                if (effect == 4)\n"
     "                {\n"
-    "                    float radius = fast::max(_81.u_post_c.y, 0.5);\n"
+    "                    float radius = fast::max(v_81.u_post_c.y, 0.5);\n"
     "                    float3 sum = float3(0.0);\n"
     "                    float wsum = 0.0;\n"
     "                    for (int y = -2; y <= 2; y++)\n"
@@ -4526,7 +5052,7 @@ static const char post_effects_frag_msl[] =
     "                        {\n"
     "                            float w = exp(((-0.5) * float((x * x) + (y * y))) / 2.0);\n"
     "                            float2 param_6 = uv + ((float2(float(x), float(y)) * texel) * radius);\n"
-    "                            sum += (fetchColor(param_6, _81, u_scene_color, u_scene_colorSmplr) * w);\n"
+    "                            sum += (fetchColor(param_6, v_81, u_scene_color, u_scene_colorSmplr) * w);\n"
     "                            wsum += w;\n"
     "                        }\n"
     "                    }\n"
@@ -4537,45 +5063,45 @@ static const char post_effects_frag_msl[] =
     "                {\n"
     "                    if (effect == 5)\n"
     "                    {\n"
-    "                        float r = fast::max(_81.u_post_c.y, 1.0);\n"
+    "                        float r = fast::max(v_81.u_post_c.y, 1.0);\n"
     "                        float2 param_8 = uv + ((float2(-1.0) * texel) * r);\n"
-    "                        float3 param_9 = fetchColor(param_8, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_9 = fetchColor(param_8, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float tl = gsLuminance(param_9);\n"
     "                        float2 param_10 = uv + ((float2(0.0, -1.0) * texel) * r);\n"
-    "                        float3 param_11 = fetchColor(param_10, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_11 = fetchColor(param_10, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float tc = gsLuminance(param_11);\n"
     "                        float2 param_12 = uv + ((float2(1.0, -1.0) * texel) * r);\n"
-    "                        float3 param_13 = fetchColor(param_12, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_13 = fetchColor(param_12, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float tr = gsLuminance(param_13);\n"
     "                        float2 param_14 = uv + ((float2(-1.0, 0.0) * texel) * r);\n"
-    "                        float3 param_15 = fetchColor(param_14, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_15 = fetchColor(param_14, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float ml = gsLuminance(param_15);\n"
     "                        float2 param_16 = uv + ((float2(1.0, 0.0) * texel) * r);\n"
-    "                        float3 param_17 = fetchColor(param_16, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_17 = fetchColor(param_16, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float mr = gsLuminance(param_17);\n"
     "                        float2 param_18 = uv + ((float2(-1.0, 1.0) * texel) * r);\n"
-    "                        float3 param_19 = fetchColor(param_18, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_19 = fetchColor(param_18, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float bl = gsLuminance(param_19);\n"
     "                        float2 param_20 = uv + ((float2(0.0, 1.0) * texel) * r);\n"
-    "                        float3 param_21 = fetchColor(param_20, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_21 = fetchColor(param_20, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float bc = gsLuminance(param_21);\n"
     "                        float2 param_22 = uv + ((float2(1.0) * texel) * r);\n"
-    "                        float3 param_23 = fetchColor(param_22, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                        float3 param_23 = fetchColor(param_22, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        float br = gsLuminance(param_23);\n"
     "                        float gx = (((((-tl) - (2.0 * ml)) - bl) + tr) + (2.0 * mr)) + br;\n"
     "                        float gy = (((((-tl) - (2.0 * tc)) - tr) + bl) + (2.0 * bc)) + br;\n"
     "                        float param_24 = length(float2(gx, gy)) * fast::max(strength, 0.0);\n"
     "                        float edge = gsSaturate(param_24);\n"
-    "                        color = mix(color * 0.25, _81.u_tint.xyz, float3(edge));\n"
+    "                        color = mix(color * 0.25, v_81.u_tint.xyz, float3(edge));\n"
     "                    }\n"
     "                    else\n"
     "                    {\n"
     "                        if (effect == 6)\n"
     "                        {\n"
-    "                            float2 cell = texel * fast::max(_81.u_post_c.y, 1.0);\n"
+    "                            float2 cell = texel * fast::max(v_81.u_post_c.y, 1.0);\n"
     "                            float2 snapped = (floor(uv / cell) + float2(0.5)) * cell;\n"
     "                            float2 param_25 = snapped;\n"
-    "                            color = fetchColor(param_25, _81, u_scene_color, u_scene_colorSmplr);\n"
+    "                            color = fetchColor(param_25, v_81, u_scene_color, u_scene_colorSmplr);\n"
     "                        }\n"
     "                        else\n"
     "                        {\n"
@@ -4589,7 +5115,7 @@ static const char post_effects_frag_msl[] =
     "                            {\n"
     "                                if (effect == 8)\n"
     "                                {\n"
-    "                                    float lines = fast::max(_81.u_post_c.y, 1.0);\n"
+    "                                    float lines = fast::max(v_81.u_post_c.y, 1.0);\n"
     "                                    float row = floor(gl_FragCoord.y / lines);\n"
     "                                    float _548;\n"
     "                                    if (mod(row, 2.0) < 1.0)\n"
@@ -4608,23 +5134,23 @@ static const char post_effects_frag_msl[] =
     "                                {\n"
     "                                    if (effect == 9)\n"
     "                                    {\n"
-    "                                        float2 dir = (((in.v_uv - float2(0.5)) * texel) * fast::max(_81.u_post_c.y, 1.0)) * 8.0;\n"
+    "                                        float2 dir = (((in.v_uv - float2(0.5)) * texel) * fast::max(v_81.u_post_c.y, 1.0)) * 8.0;\n"
     "                                        float2 param_28 = uv + dir;\n"
     "                                        float2 param_29 = uv - dir;\n"
-    "                                        color = float3(fetchColor(param_28, _81, u_scene_color, u_scene_colorSmplr).x, color.y, fetchColor(param_29, _81, u_scene_color, u_scene_colorSmplr).z);\n"
+    "                                        color = float3(fetchColor(param_28, v_81, u_scene_color, u_scene_colorSmplr).x, color.y, fetchColor(param_29, v_81, u_scene_color, u_scene_colorSmplr).z);\n"
     "                                    }\n"
     "                                    else\n"
     "                                    {\n"
     "                                        if (effect == 10)\n"
     "                                        {\n"
     "                                            float param_30 = strength;\n"
-    "                                            color = mix(color, color * _81.u_tint.xyz, float3(gsSaturate(param_30)));\n"
+    "                                            color = mix(color, color * v_81.u_tint.xyz, float3(gsSaturate(param_30)));\n"
     "                                        }\n"
     "                                        else\n"
     "                                        {\n"
     "                                            if (effect == 11)\n"
     "                                            {\n"
-    "                                                float levels = fast::max(_81.u_post_c.y, 2.0);\n"
+    "                                                float levels = fast::max(v_81.u_post_c.y, 2.0);\n"
     "                                                color = floor((color * levels) + float3(0.5)) / float3(levels);\n"
     "                                            }\n"
     "                                        }\n"
@@ -4637,23 +5163,23 @@ static const char post_effects_frag_msl[] =
     "            }\n"
     "        }\n"
     "    }\n"
-    "    float sat = fast::max(_81.u_post_b.y, 0.0);\n"
+    "    float sat = fast::max(v_81.u_post_b.y, 0.0);\n"
     "    if (abs(sat - 1.0) > 9.9999997473787516355514526367188e-05)\n"
     "    {\n"
     "        float3 param_31 = color;\n"
     "        color = mix(float3(gsLuminance(param_31)), color, float3(sat));\n"
     "    }\n"
-    "    float vignette = fast::max(_81.u_post_b.x, 0.0);\n"
+    "    float vignette = fast::max(v_81.u_post_b.x, 0.0);\n"
     "    if (vignette > 9.9999997473787516355514526367188e-05)\n"
     "    {\n"
     "        float2 d_1 = in.v_uv - float2(0.5);\n"
     "        float param_32 = 1.0 - ((dot(d_1, d_1) * vignette) * 2.0);\n"
     "        color *= gsSaturate(param_32);\n"
     "    }\n"
-    "    if (_81.u_post_d.z > 0.5)\n"
+    "    if (v_81.u_post_d.z > 0.5)\n"
     "    {\n"
-    "        float gamma = fast::max(_81.u_post_a.y, 0.100000001490116119384765625);\n"
-    "        color = powr(fast::max(color, float3(0.0)), float3(1.0 / gamma));\n"
+    "        float gamma = fast::max(v_81.u_post_a.y, 0.100000001490116119384765625);\n"
+    "        color = pow(fast::max(color, float3(0.0)), float3(1.0 / gamma));\n"
     "        float3 param_33 = color;\n"
     "        out.out_color = float4(gsSaturate(param_33), 1.0);\n"
     "    }\n"
@@ -4665,7 +5191,1089 @@ static const char post_effects_frag_msl[] =
     "}\n"
     "\n"
     "";
-static const size_t post_effects_frag_msl_size = 11792;
+static const size_t post_effects_frag_msl_size = 11827;
+
+// ---- rt/raytrace.comp (OpenGL 4.10 variant) ----
+static const char rt_raytrace_comp_glsl[] =
+    "#version 430\n"
+    "#define GENESIS_GLSL 1\n"
+    "/*\n"
+    " * Genesis Render - compute ray tracer\n"
+    " *\n"
+    " * A portable GPU ray tracer: one invocation per pixel (8x8 workgroup), brute\n"
+    " * force sphere/plane intersections, shadow rays and one reflection bounce.\n"
+    " * It is the software/hardware-agnostic backend of the Ray Tracing API; the\n"
+    " * same API can later dispatch to VK_KHR_ray_tracing / Metal ray tracing.\n"
+    " *\n"
+    " * binding 0 : scene    (2 vec4 per sphere: center+radius, colour+material)\n"
+    " * binding 1 : params   (p0: width,height,samples,time;\n"
+    " *                       p1: camera origin + tanHalfFov;\n"
+    " *                       p2: right + aspect; p3: up + unused;\n"
+    " *                       p4: forward + sphere count)\n"
+    " * binding 2 : output   (packed RGBA8, one uint per pixel)\n"
+    " */\n"
+    "// ---- begin common/genesis_shader.h ----\n"
+    "/*\n"
+    " * Genesis Render - GLSL dialect header\n"
+    " *\n"
+    " * One GLSL source is authored for all three backends.  scripts/build_shaders.py\n"
+    " * prepends `#version` and defines exactly one of GENESIS_VK / GENESIS_MSL /\n"
+    " * GENESIS_GLSL before inlining this header.\n"
+    " *\n"
+    " *   Vulkan : GLSL 450, explicit set/binding qualifiers, push constants.\n"
+    " *   Metal  : GLSL 450 compiled to SPIR-V, then translated to MSL by\n"
+    " *            SPIRV-Cross (--msl-decoration-binding).  Every descriptor is\n"
+    " *            flattened into set 0 with binding = set * 8 + binding, which\n"
+    " *            becomes the Metal [[buffer(n)]] / [[texture(n)]] / [[sampler(n)]]\n"
+    " *            slot.  Push constants become a uniform block at buffer 24 and\n"
+    " *            vertex streams live at buffer 30 (see metal_backend.mm).\n"
+    " *            Samplers must therefore only be declared in sets 0 and 1\n"
+    " *            (Metal exposes 16 sampler slots per stage).\n"
+    " *   OpenGL : GLSL 410 (the macOS ceiling), no binding qualifiers.  The GL RHI\n"
+    " *            backend binds uniform blocks by NAME to the deterministic index\n"
+    " *            glUniformBlockIndex(set, binding) and assigns sampler units with\n"
+    " *            glTextureUnit(set, binding) via glUniform1i at pipeline build time.\n"
+    " *            Push constants are emulated by a std140 block named exactly\n"
+    " *            `PushConstants` bound to uniform block index 0.\n"
+    " *\n"
+    " * Binding budget (kept inside the GL 4.1 minimum limits:\n"
+    " * GL_MAX_UNIFORM_BUFFER_BINDINGS >= 36, GL_MAX_TEXTURE_IMAGE_UNITS >= 16):\n"
+    " *\n"
+    " *   set 0 (scene, bound once per frame)\n"
+    " *     binding 0 : UBO   PerFrame          -> GL block 1\n"
+    " *     binding 1 : UBO   Lights            -> GL block 2\n"
+    " *     binding 2 : UBO   Environment       -> GL block 3\n"
+    " *     binding 3 : cube  u_irradiance_map  -> GL unit 3\n"
+    " *     binding 4 : cube  u_prefilter_map   -> GL unit 4\n"
+    " *     binding 5 : 2D    u_brdf_lut        -> GL unit 5\n"
+    " *   set 1 (material, bound per draw)\n"
+    " *     binding 0 : UBO   Material          -> GL block 9\n"
+    " *     binding 1 : 2D    u_base_color      -> GL unit 9\n"
+    " *     binding 2 : 2D    u_metallic_roughness -> GL unit 10\n"
+    " *     binding 3 : 2D    u_normal          -> GL unit 11\n"
+    " *     binding 4 : 2D    u_occlusion       -> GL unit 12\n"
+    " *     binding 5 : 2D    u_emissive        -> GL unit 13\n"
+    " *   set 2 (per draw, dynamic offset)\n"
+    " *     binding 0 : UBO   PerDraw           -> GL block 17\n"
+    " */\n"
+    "#ifndef GENESIS_SHADER_COMMON_H\n"
+    "#define GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// NOTE: macro parameter names must NOT collide with GLSL layout qualifier\n"
+    "// keywords (`set`, `binding`, `location`), otherwise the preprocessor replaces\n"
+    "// the keyword too and produces `layout(location = 0)` -> `layout(0 = 0)`.\n"
+    "#if defined(GENESIS_MSL)\n"
+    "#define GS_MSL_SLOT(gs_set, gs_binding) ((gs_set) * 8 + (gs_binding))\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#elif defined(GENESIS_VK)\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#else\n"
+    "#define GS_UBO(gs_set, gs_binding, gs_block) layout(std140) uniform gs_block\n"
+    "#define GS_TEX2D(gs_set, gs_binding, gs_name) uniform sampler2D gs_name\n"
+    "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
+    "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
+    "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
+    "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
+    "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
+    "#endif\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Shared constants (mirrored in C++: renderer/render_ubo.hpp)\n"
+    "//----------------------------------------------------------------------\n"
+    "#define GS_MAX_LIGHTS 8\n"
+    "#define GS_LIGHT_DIRECTIONAL 0\n"
+    "#define GS_LIGHT_POINT 1\n"
+    "#define GS_LIGHT_SPOT 2\n"
+    "\n"
+    "#define GS_ALPHA_OPAQUE 0\n"
+    "#define GS_ALPHA_MASK 1\n"
+    "#define GS_ALPHA_BLEND 2\n"
+    "\n"
+    "// Material \"texture present\" bitmask (MaterialUBO.texture_mask.x)\n"
+    "#define GS_TEX_BASE_COLOR 1\n"
+    "#define GS_TEX_METAL_ROUGH 2\n"
+    "#define GS_TEX_NORMAL 4\n"
+    "#define GS_TEX_OCCLUSION 8\n"
+    "#define GS_TEX_EMISSIVE 16\n"
+    "\n"
+    "//----------------------------------------------------------------------\n"
+    "// Small helpers used by several shaders\n"
+    "//----------------------------------------------------------------------\n"
+    "float gsSaturate(float v) { return clamp(v, 0.0, 1.0); }\n"
+    "vec2 gsSaturate(vec2 v) { return clamp(v, vec2(0.0), vec2(1.0)); }\n"
+    "vec3 gsSaturate(vec3 v) { return clamp(v, vec3(0.0), vec3(1.0)); }\n"
+    "\n"
+    "float gsLuminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }\n"
+    "\n"
+    "// sRGB -> linear (exact piecewise curve)\n"
+    "vec3 gsSrgbToLinear(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c / 12.92;\n"
+    "    vec3 hi = pow((c + 0.055) / 1.055, vec3(2.4));\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));\n"
+    "}\n"
+    "\n"
+    "// linear -> sRGB\n"
+    "vec3 gsLinearToSrgb(vec3 c)\n"
+    "{\n"
+    "    vec3 lo = c * 12.92;\n"
+    "    vec3 hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;\n"
+    "    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));\n"
+    "}\n"
+    "\n"
+    "// Equirectangular UV <-> direction.\n"
+    "// Convention (matches scripts/gen_assets.py):\n"
+    "//   u = atan2(dir.z, dir.x) / (2*PI) + 0.5\n"
+    "//   v = acos(dir.y) / PI\n"
+    "vec2 gsDirectionToEquirectUV(vec3 dir)\n"
+    "{\n"
+    "    vec3 d = normalize(dir);\n"
+    "    float u = atan(d.z, d.x) / (2.0 * 3.14159265358979323846) + 0.5;\n"
+    "    float v = acos(clamp(d.y, -1.0, 1.0)) / 3.14159265358979323846;\n"
+    "    return vec2(u, v);\n"
+    "}\n"
+    "\n"
+    "vec3 gsEquirectUVToDirection(vec2 uv)\n"
+    "{\n"
+    "    float phi = (uv.x - 0.5) * 2.0 * 3.14159265358979323846;\n"
+    "    float theta = uv.y * 3.14159265358979323846;\n"
+    "    return vec3(cos(phi) * sin(theta), cos(theta), sin(phi) * sin(theta));\n"
+    "}\n"
+    "\n"
+    "// Cubemap face directions used by the IBL baker.  Order matches the engine's\n"
+    "// layer order: +X, -X, +Y, -Y, +Z, -Z.\n"
+    "vec3 gsCubeFaceDirection(int face, vec2 uv)\n"
+    "{\n"
+    "    // uv in [0,1]^2 with (0,0) at the top-left of the rendered quad.\n"
+    "    vec2 t = uv * 2.0 - 1.0; // -> [-1,1], y up after the flip below\n"
+    "    t.y = -t.y;\n"
+    "    if (face == 0) return normalize(vec3(1.0, t.y, -t.x));   // +X\n"
+    "    if (face == 1) return normalize(vec3(-1.0, t.y, t.x));   // -X\n"
+    "    if (face == 2) return normalize(vec3(t.x, 1.0, t.y));    // +Y\n"
+    "    if (face == 3) return normalize(vec3(t.x, -1.0, -t.y));  // -Y\n"
+    "    if (face == 4) return normalize(vec3(t.x, t.y, 1.0));    // +Z\n"
+    "    return normalize(vec3(-t.x, t.y, -1.0));                 // -Z\n"
+    "}\n"
+    "\n"
+    "#endif // GENESIS_SHADER_COMMON_H\n"
+    "\n"
+    "// ---- end #include \"common/genesis_shader.h\" ----\n"
+    "\n"
+    "layout(local_size_x = 8, local_size_y = 8) in;\n"
+    "\n"
+    "GS_SSBO_RO(0, 0, SceneBuffer) { vec4 scene[]; } scene_data;\n"
+    "GS_SSBO_RO(0, 1, RtParams) { vec4 p0; vec4 p1; vec4 p2; vec4 p3; vec4 p4; } rt_params;\n"
+    "GS_SSBO_WO(0, 2, RtOutput) { uint pixels[]; } output_image;\n"
+    "\n"
+    "struct Hit\n"
+    "{\n"
+    "    float t;\n"
+    "    vec3 normal;\n"
+    "    vec3 albedo;\n"
+    "    float metallic;\n"
+    "};\n"
+    "\n"
+    "bool intersectSphere(vec3 ro, vec3 rd, vec4 sphere, out float t)\n"
+    "{\n"
+    "    vec3 oc = ro - sphere.xyz;\n"
+    "    float b = dot(oc, rd);\n"
+    "    float c = dot(oc, oc) - sphere.w * sphere.w;\n"
+    "    float disc = b * b - c;\n"
+    "    if (disc < 0.0) return false;\n"
+    "    float s = sqrt(disc);\n"
+    "    t = -b - s;\n"
+    "    if (t < 0.001) t = -b + s;\n"
+    "    return t > 0.001;\n"
+    "}\n"
+    "\n"
+    "Hit traceScene(vec3 ro, vec3 rd, bool primary)\n"
+    "{\n"
+    "    Hit hit;\n"
+    "    hit.t = 1e30;\n"
+    "    hit.normal = vec3(0.0, 1.0, 0.0);\n"
+    "    hit.albedo = vec3(0.0);\n"
+    "    hit.metallic = 0.0;\n"
+    "\n"
+    "    const uint count = uint(rt_params.p4.w);\n"
+    "    for (uint i = 0u; i < count; ++i)\n"
+    "    {\n"
+    "        float t;\n"
+    "        vec4 sphere = scene_data.scene[i * 2u];\n"
+    "        if (intersectSphere(ro, rd, sphere, t) && t < hit.t)\n"
+    "        {\n"
+    "            hit.t = t;\n"
+    "            hit.normal = normalize(ro + rd * t - sphere.xyz);\n"
+    "            vec4 mat = scene_data.scene[i * 2u + 1u];\n"
+    "            hit.albedo = mat.xyz;\n"
+    "            hit.metallic = mat.w;\n"
+    "        }\n"
+    "    }\n"
+    "\n"
+    "    // Ground plane y = 0 (checker board).\n"
+    "    if (abs(rd.y) > 1e-5)\n"
+    "    {\n"
+    "        float t = -ro.y / rd.y;\n"
+    "        if (t > 0.001 && t < hit.t)\n"
+    "        {\n"
+    "            vec3 p = ro + rd * t;\n"
+    "            float checker = mod(floor(p.x) + floor(p.z), 2.0);\n"
+    "            hit.t = t;\n"
+    "            hit.normal = vec3(0.0, 1.0, 0.0);\n"
+    "            hit.albedo = mix(vec3(0.08, 0.09, 0.11), vec3(0.28, 0.30, 0.34), checker);\n"
+    "            hit.metallic = 0.0;\n"
+    "        }\n"
+    "    }\n"
+    "    return hit;\n"
+    "}\n"
+    "\n"
+    "vec3 sky(vec3 rd)\n"
+    "{\n"
+    "    float t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);\n"
+    "    return mix(vec3(0.03, 0.04, 0.07), vec3(0.25, 0.45, 0.85), t);\n"
+    "}\n"
+    "\n"
+    "float hash12(vec2 p)\n"
+    "{\n"
+    "    vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n"
+    "    p3 += dot(p3, p3.yzx + 33.33);\n"
+    "    return fract((p3.x + p3.y) * p3.z);\n"
+    "}\n"
+    "\n"
+    "// Direct lighting only (no recursion - GLSL forbids recursive functions).\n"
+    "vec3 shadeDirect(Hit hit, vec3 p, vec3 rd)\n"
+    "{\n"
+    "    vec3 sun = normalize(vec3(0.45, 0.8, 0.35));\n"
+    "    float ndl = max(dot(hit.normal, sun), 0.0);\n"
+    "\n"
+    "    // Shadow ray\n"
+    "    float shadow = 1.0;\n"
+    "    Hit shadow_hit = traceScene(p + hit.normal * 0.002, sun, false);\n"
+    "    if (shadow_hit.t < 1e29) shadow = 0.15;\n"
+    "\n"
+    "    vec3 color = hit.albedo * (0.18 + 0.82 * ndl * shadow);\n"
+    "    color += vec3(0.35, 0.45, 0.6) * pow(max(0.0, dot(reflect(-sun, hit.normal), -rd)), 32.0) * 0.25;\n"
+    "    return color;\n"
+    "}\n"
+    "\n"
+    "// One reflection bounce, expressed iteratively.\n"
+    "vec3 shade(vec3 ro, vec3 rd, bool allow_reflection)\n"
+    "{\n"
+    "    Hit hit = traceScene(ro, rd, true);\n"
+    "    if (hit.t >= 1e29) return sky(rd);\n"
+    "\n"
+    "    vec3 p = ro + rd * hit.t;\n"
+    "    vec3 color = shadeDirect(hit, p, rd);\n"
+    "    if (hit.metallic > 0.5 && allow_reflection)\n"
+    "    {\n"
+    "        vec3 r = reflect(rd, hit.normal);\n"
+    "        Hit reflected_hit = traceScene(p + hit.normal * 0.002, r, false);\n"
+    "        vec3 reflected = reflected_hit.t >= 1e29\n"
+    "                             ? sky(r)\n"
+    "                             : shadeDirect(reflected_hit, p + hit.normal * 0.002 + r * reflected_hit.t, r);\n"
+    "        color = mix(color, reflected * hit.albedo * 1.4, 0.65);\n"
+    "    }\n"
+    "    return color;\n"
+    "}\n"
+    "\n"
+    "uint packRGBA(vec3 color)\n"
+    "{\n"
+    "    uvec3 c = uvec3(clamp(color, vec3(0.0), vec3(1.0)) * 255.0 + 0.5);\n"
+    "    return c.x | (c.y << 8) | (c.z << 16) | (255u << 24);\n"
+    "}\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "    const uint width = uint(rt_params.p0.x);\n"
+    "    const uint height = uint(rt_params.p0.y);\n"
+    "    const uint samples = max(1u, uint(rt_params.p0.z));\n"
+    "    const uint x = gl_GlobalInvocationID.x;\n"
+    "    const uint y = gl_GlobalInvocationID.y;\n"
+    "    if (x >= width || y >= height) return;\n"
+    "\n"
+    "    const vec3 origin = rt_params.p1.xyz;\n"
+    "    const float tan_half_fov = rt_params.p1.w;\n"
+    "    const vec3 right = rt_params.p2.xyz;\n"
+    "    const float aspect = rt_params.p2.w;\n"
+    "    const vec3 up = rt_params.p3.xyz;\n"
+    "    const vec3 forward = rt_params.p4.xyz;\n"
+    "\n"
+    "    vec3 sum = vec3(0.0);\n"
+    "    for (uint s = 0u; s < samples; ++s)\n"
+    "    {\n"
+    "        vec2 jitter = vec2(hash12(vec2(x, y) + float(s) * 17.0),\n"
+    "                           hash12(vec2(y, x) + float(s) * 29.0)) - 0.5;\n"
+    "        vec2 uv = (vec2(x, y) + 0.5 + jitter) / vec2(width, height) * 2.0 - 1.0;\n"
+    "        uv.y = -uv.y;\n"
+    "        vec3 dir = normalize(forward + right * (uv.x * tan_half_fov * aspect) + up * (uv.y * tan_half_fov));\n"
+    "        sum += shade(origin, dir, true);\n"
+    "    }\n"
+    "    output_image.pixels[y * width + x] = packRGBA(sum / float(samples));\n"
+    "}\n"
+    "";
+static const size_t rt_raytrace_comp_glsl_size = 14247;
+
+// ---- rt/raytrace.comp (SPIR-V, Vulkan 1.1) ----
+static const uint32_t rt_raytrace_comp_spirv[] = {
+    0x07230203u, 0x00010300u, 0x0008000bu, 0x00000297u, 0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
+    0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
+    0x0006000fu, 0x00000005u, 0x00000004u, 0x6e69616du, 0x00000000u, 0x00000200u, 0x00060010u, 0x00000004u,
+    0x00000011u, 0x00000008u, 0x00000008u, 0x00000001u, 0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u,
+    0x00000004u, 0x6e69616du, 0x00000000u, 0x000a0005u, 0x00000012u, 0x65746e69u, 0x63657372u, 0x68705374u,
+    0x28657265u, 0x3b336676u, 0x3b336676u, 0x3b346676u, 0x003b3166u, 0x00030005u, 0x0000000eu, 0x00006f72u,
+    0x00030005u, 0x0000000fu, 0x00006472u, 0x00040005u, 0x00000010u, 0x65687073u, 0x00006572u, 0x00030005u,
+    0x00000011u, 0x00000074u, 0x00030005u, 0x00000015u, 0x00746948u, 0x00040006u, 0x00000015u, 0x00000000u,
+    0x00000074u, 0x00050006u, 0x00000015u, 0x00000001u, 0x6d726f6eu, 0x00006c61u, 0x00050006u, 0x00000015u,
+    0x00000002u, 0x65626c61u, 0x00006f64u, 0x00060006u, 0x00000015u, 0x00000003u, 0x6174656du, 0x63696c6cu,
+    0x00000000u, 0x00080005u, 0x0000001au, 0x63617274u, 0x65635365u, 0x7628656eu, 0x763b3366u, 0x623b3366u,
+    0x00003b31u, 0x00030005u, 0x00000017u, 0x00006f72u, 0x00030005u, 0x00000018u, 0x00006472u, 0x00040005u,
+    0x00000019u, 0x6d697270u, 0x00797261u, 0x00050005u, 0x0000001eu, 0x28796b73u, 0x3b336676u, 0x00000000u,
+    0x00030005u, 0x0000001du, 0x00006472u, 0x00050005u, 0x00000024u, 0x68736168u, 0x76283231u, 0x003b3266u,
+    0x00030005u, 0x00000023u, 0x00000070u, 0x000e0005u, 0x0000002bu, 0x64616873u, 0x72694465u, 0x28746365u,
+    0x75727473u, 0x482d7463u, 0x662d7469u, 0x66762d31u, 0x66762d33u, 0x31662d33u, 0x66763b31u, 0x66763b33u,
+    0x00003b33u, 0x00030005u, 0x00000028u, 0x00746968u, 0x00030005u, 0x00000029u, 0x00000070u, 0x00030005u,
+    0x0000002au, 0x00006472u, 0x00070005u, 0x00000031u, 0x64616873u, 0x66762865u, 0x66763b33u, 0x31623b33u,
+    0x0000003bu, 0x00030005u, 0x0000002eu, 0x00006f72u, 0x00030005u, 0x0000002fu, 0x00006472u, 0x00070005u,
+    0x00000030u, 0x6f6c6c61u, 0x65725f77u, 0x63656c66u, 0x6e6f6974u, 0x00000000u, 0x00060005u, 0x00000036u,
+    0x6b636170u, 0x41424752u, 0x33667628u, 0x0000003bu, 0x00040005u, 0x00000035u, 0x6f6c6f63u, 0x00000072u,
+    0x00030005u, 0x00000038u, 0x0000636fu, 0x00030005u, 0x0000003du, 0x00000062u, 0x00030005u, 0x00000041u,
+    0x00000063u, 0x00040005u, 0x0000004cu, 0x63736964u, 0x00000000u, 0x00030005u, 0x00000059u, 0x00000073u,
+    0x00030005u, 0x0000006du, 0x00746968u, 0x00040005u, 0x0000007cu, 0x6e756f63u, 0x00000074u, 0x00050005u,
+    0x0000007du, 0x61507452u, 0x736d6172u, 0x00000000u, 0x00040006u, 0x0000007du, 0x00000000u, 0x00003070u,
+    0x00040006u, 0x0000007du, 0x00000001u, 0x00003170u, 0x00040006u, 0x0000007du, 0x00000002u, 0x00003270u,
+    0x00040006u, 0x0000007du, 0x00000003u, 0x00003370u, 0x00040006u, 0x0000007du, 0x00000004u, 0x00003470u,
+    0x00050005u, 0x0000007fu, 0x705f7472u, 0x6d617261u, 0x00000073u, 0x00030005u, 0x00000085u, 0x00000069u,
+    0x00040005u, 0x0000008fu, 0x65687073u, 0x00006572u, 0x00050005u, 0x00000091u, 0x6e656353u, 0x66754265u,
+    0x00726566u, 0x00050006u, 0x00000091u, 0x00000000u, 0x6e656373u, 0x00000065u, 0x00050005u, 0x00000093u,
+    0x6e656373u, 0x61645f65u, 0x00006174u, 0x00030005u, 0x0000009au, 0x00000074u, 0x00040005u, 0x0000009bu,
+    0x61726170u, 0x0000006du, 0x00040005u, 0x0000009du, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000009fu,
+    0x61726170u, 0x0000006du, 0x00040005u, 0x000000a1u, 0x61726170u, 0x0000006du, 0x00030005u, 0x000000b9u,
+    0x0074616du, 0x00030005u, 0x000000cfu, 0x00000074u, 0x00030005u, 0x000000e1u, 0x00000070u, 0x00040005u,
+    0x000000e7u, 0x63656863u, 0x0072656bu, 0x00030005u, 0x00000104u, 0x00000074u, 0x00030005u, 0x00000118u,
+    0x00003370u, 0x00030005u, 0x00000137u, 0x006e7573u, 0x00030005u, 0x0000013cu, 0x006c646eu, 0x00040005u,
+    0x00000142u, 0x64616873u, 0x0000776fu, 0x00050005u, 0x00000143u, 0x64616873u, 0x685f776fu, 0x00007469u,
+    0x00040005u, 0x0000014au, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000014bu, 0x61726170u, 0x0000006du,
+    0x00040005u, 0x0000014du, 0x61726170u, 0x0000006du, 0x00040005u, 0x00000156u, 0x6f6c6f63u, 0x00000072u,
+    0x00030005u, 0x00000176u, 0x00746968u, 0x00040005u, 0x00000178u, 0x61726170u, 0x0000006du, 0x00040005u,
+    0x0000017au, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000017cu, 0x61726170u, 0x0000006du, 0x00040005u,
+    0x00000183u, 0x61726170u, 0x0000006du, 0x00030005u, 0x00000187u, 0x00000070u, 0x00040005u, 0x0000018eu,
+    0x6f6c6f63u, 0x00000072u, 0x00040005u, 0x0000018fu, 0x61726170u, 0x0000006du, 0x00040005u, 0x00000191u,
+    0x61726170u, 0x0000006du, 0x00040005u, 0x00000193u, 0x61726170u, 0x0000006du, 0x00030005u, 0x0000019du,
+    0x00000072u, 0x00060005u, 0x000001a2u, 0x6c666572u, 0x65746365u, 0x69685f64u, 0x00000074u, 0x00040005u,
+    0x000001a8u, 0x61726170u, 0x0000006du, 0x00040005u, 0x000001a9u, 0x61726170u, 0x0000006du, 0x00040005u,
+    0x000001abu, 0x61726170u, 0x0000006du, 0x00050005u, 0x000001adu, 0x6c666572u, 0x65746365u, 0x00000064u,
+    0x00040005u, 0x000001b4u, 0x61726170u, 0x0000006du, 0x00040005u, 0x000001c2u, 0x61726170u, 0x0000006du,
+    0x00040005u, 0x000001c4u, 0x61726170u, 0x0000006du, 0x00040005u, 0x000001c5u, 0x61726170u, 0x0000006du,
+    0x00030005u, 0x000001d8u, 0x00000063u, 0x00040005u, 0x000001f1u, 0x74646977u, 0x00000068u, 0x00040005u,
+    0x000001f5u, 0x67696568u, 0x00007468u, 0x00040005u, 0x000001f9u, 0x706d6173u, 0x0073656cu, 0x00030005u,
+    0x000001feu, 0x00000078u, 0x00080005u, 0x00000200u, 0x475f6c67u, 0x61626f6cu, 0x766e496cu, 0x7461636fu,
+    0x496e6f69u, 0x00000044u, 0x00030005u, 0x00000204u, 0x00000079u, 0x00040005u, 0x00000211u, 0x6769726fu,
+    0x00006e69u, 0x00060005u, 0x00000215u, 0x5f6e6174u, 0x666c6168u, 0x766f665fu, 0x00000000u, 0x00040005u,
+    0x00000218u, 0x68676972u, 0x00000074u, 0x00040005u, 0x0000021cu, 0x65707361u, 0x00007463u, 0x00030005u,
+    0x0000021fu, 0x00007075u, 0x00040005u, 0x00000223u, 0x77726f66u, 0x00647261u, 0x00030005u, 0x00000227u,
+    0x006d7573u, 0x00030005u, 0x00000228u, 0x00000073u, 0x00040005u, 0x00000231u, 0x7474696au, 0x00007265u,
+    0x00040005u, 0x0000023du, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000024au, 0x61726170u, 0x0000006du,
+    0x00030005u, 0x0000024fu, 0x00007675u, 0x00030005u, 0x00000266u, 0x00726964u, 0x00040005u, 0x00000279u,
+    0x61726170u, 0x0000006du, 0x00040005u, 0x0000027bu, 0x61726170u, 0x0000006du, 0x00040005u, 0x0000027du,
+    0x61726170u, 0x0000006du, 0x00050005u, 0x00000284u, 0x754f7452u, 0x74757074u, 0x00000000u, 0x00050006u,
+    0x00000284u, 0x00000000u, 0x65786970u, 0x0000736cu, 0x00060005u, 0x00000286u, 0x7074756fu, 0x695f7475u,
+    0x6567616du, 0x00000000u, 0x00040005u, 0x00000291u, 0x61726170u, 0x0000006du, 0x00040048u, 0x0000007du,
+    0x00000000u, 0x00000018u, 0x00050048u, 0x0000007du, 0x00000000u, 0x00000023u, 0x00000000u, 0x00040048u,
+    0x0000007du, 0x00000001u, 0x00000018u, 0x00050048u, 0x0000007du, 0x00000001u, 0x00000023u, 0x00000010u,
+    0x00040048u, 0x0000007du, 0x00000002u, 0x00000018u, 0x00050048u, 0x0000007du, 0x00000002u, 0x00000023u,
+    0x00000020u, 0x00040048u, 0x0000007du, 0x00000003u, 0x00000018u, 0x00050048u, 0x0000007du, 0x00000003u,
+    0x00000023u, 0x00000030u, 0x00040048u, 0x0000007du, 0x00000004u, 0x00000018u, 0x00050048u, 0x0000007du,
+    0x00000004u, 0x00000023u, 0x00000040u, 0x00030047u, 0x0000007du, 0x00000002u, 0x00040047u, 0x0000007fu,
+    0x00000022u, 0x00000000u, 0x00040047u, 0x0000007fu, 0x00000021u, 0x00000001u, 0x00040047u, 0x00000090u,
+    0x00000006u, 0x00000010u, 0x00040048u, 0x00000091u, 0x00000000u, 0x00000018u, 0x00050048u, 0x00000091u,
+    0x00000000u, 0x00000023u, 0x00000000u, 0x00030047u, 0x00000091u, 0x00000002u, 0x00040047u, 0x00000093u,
+    0x00000022u, 0x00000000u, 0x00040047u, 0x00000093u, 0x00000021u, 0x00000000u, 0x00040047u, 0x00000200u,
+    0x0000000bu, 0x0000001cu, 0x00040047u, 0x00000283u, 0x00000006u, 0x00000004u, 0x00040048u, 0x00000284u,
+    0x00000000u, 0x00000019u, 0x00050048u, 0x00000284u, 0x00000000u, 0x00000023u, 0x00000000u, 0x00030047u,
+    0x00000284u, 0x00000002u, 0x00040047u, 0x00000286u, 0x00000022u, 0x00000000u, 0x00040047u, 0x00000286u,
+    0x00000021u, 0x00000002u, 0x00040047u, 0x00000296u, 0x0000000bu, 0x00000019u, 0x00020013u, 0x00000002u,
+    0x00030021u, 0x00000003u, 0x00000002u, 0x00030016u, 0x00000006u, 0x00000020u, 0x00040017u, 0x00000007u,
+    0x00000006u, 0x00000003u, 0x00040020u, 0x00000008u, 0x00000007u, 0x00000007u, 0x00040017u, 0x00000009u,
+    0x00000006u, 0x00000004u, 0x00040020u, 0x0000000au, 0x00000007u, 0x00000009u, 0x00040020u, 0x0000000bu,
+    0x00000007u, 0x00000006u, 0x00020014u, 0x0000000cu, 0x00070021u, 0x0000000du, 0x0000000cu, 0x00000008u,
+    0x00000008u, 0x0000000au, 0x0000000bu, 0x00040020u, 0x00000014u, 0x00000007u, 0x0000000cu, 0x0006001eu,
+    0x00000015u, 0x00000006u, 0x00000007u, 0x00000007u, 0x00000006u, 0x00060021u, 0x00000016u, 0x00000015u,
+    0x00000008u, 0x00000008u, 0x00000014u, 0x00040021u, 0x0000001cu, 0x00000007u, 0x00000008u, 0x00040017u,
+    0x00000020u, 0x00000006u, 0x00000002u, 0x00040020u, 0x00000021u, 0x00000007u, 0x00000020u, 0x00040021u,
+    0x00000022u, 0x00000006u, 0x00000021u, 0x00040020u, 0x00000026u, 0x00000007u, 0x00000015u, 0x00060021u,
+    0x00000027u, 0x00000007u, 0x00000026u, 0x00000008u, 0x00000008u, 0x00060021u, 0x0000002du, 0x00000007u,
+    0x00000008u, 0x00000008u, 0x00000014u, 0x00040015u, 0x00000033u, 0x00000020u, 0x00000000u, 0x00040021u,
+    0x00000034u, 0x00000033u, 0x00000008u, 0x0004002bu, 0x00000033u, 0x00000045u, 0x00000003u, 0x0004002bu,
+    0x00000006u, 0x00000053u, 0x00000000u, 0x0003002au, 0x0000000cu, 0x00000057u, 0x0004002bu, 0x00000006u,
+    0x00000061u, 0x3a83126fu, 0x00040015u, 0x0000006eu, 0x00000020u, 0x00000001u, 0x0004002bu, 0x0000006eu,
+    0x0000006fu, 0x00000000u, 0x0004002bu, 0x00000006u, 0x00000070u, 0x7149f2cau, 0x0004002bu, 0x0000006eu,
+    0x00000072u, 0x00000001u, 0x0004002bu, 0x00000006u, 0x00000073u, 0x3f800000u, 0x0006002cu, 0x00000007u,
+    0x00000074u, 0x00000053u, 0x00000073u, 0x00000053u, 0x0004002bu, 0x0000006eu, 0x00000076u, 0x00000002u,
+    0x0006002cu, 0x00000007u, 0x00000077u, 0x00000053u, 0x00000053u, 0x00000053u, 0x0004002bu, 0x0000006eu,
+    0x00000079u, 0x00000003u, 0x00040020u, 0x0000007bu, 0x00000007u, 0x00000033u, 0x0007001eu, 0x0000007du,
+    0x00000009u, 0x00000009u, 0x00000009u, 0x00000009u, 0x00000009u, 0x00040020u, 0x0000007eu, 0x0000000cu,
+    0x0000007du, 0x0004003bu, 0x0000007eu, 0x0000007fu, 0x0000000cu, 0x0004002bu, 0x0000006eu, 0x00000080u,
+    0x00000004u, 0x00040020u, 0x00000081u, 0x0000000cu, 0x00000006u, 0x0004002bu, 0x00000033u, 0x00000086u,
+    0x00000000u, 0x0003001du, 0x00000090u, 0x00000009u, 0x0003001eu, 0x00000091u, 0x00000090u, 0x00040020u,
+    0x00000092u, 0x0000000cu, 0x00000091u, 0x0004003bu, 0x00000092u, 0x00000093u, 0x0000000cu, 0x0004002bu,
+    0x00000033u, 0x00000095u, 0x00000002u, 0x00040020u, 0x00000097u, 0x0000000cu, 0x00000009u, 0x0004002bu,
+    0x00000033u, 0x000000bcu, 0x00000001u, 0x0004002bu, 0x00000006u, 0x000000cbu, 0x3727c5acu, 0x0004002bu,
+    0x00000006u, 0x000000efu, 0x40000000u, 0x0004002bu, 0x00000006u, 0x000000f4u, 0x3da3d70au, 0x0004002bu,
+    0x00000006u, 0x000000f5u, 0x3db851ecu, 0x0004002bu, 0x00000006u, 0x000000f6u, 0x3de147aeu, 0x0006002cu,
+    0x00000007u, 0x000000f7u, 0x000000f4u, 0x000000f5u, 0x000000f6u, 0x0004002bu, 0x00000006u, 0x000000f8u,
+    0x3e8f5c29u, 0x0004002bu, 0x00000006u, 0x000000f9u, 0x3e99999au, 0x0004002bu, 0x00000006u, 0x000000fau,
+    0x3eae147bu, 0x0006002cu, 0x00000007u, 0x000000fbu, 0x000000f8u, 0x000000f9u, 0x000000fau, 0x0004002bu,
+    0x00000006u, 0x00000107u, 0x3f000000u, 0x0004002bu, 0x00000006u, 0x0000010bu, 0x3cf5c28fu, 0x0004002bu,
+    0x00000006u, 0x0000010cu, 0x3d23d70au, 0x0004002bu, 0x00000006u, 0x0000010du, 0x3d8f5c29u, 0x0006002cu,
+    0x00000007u, 0x0000010eu, 0x0000010bu, 0x0000010cu, 0x0000010du, 0x0004002bu, 0x00000006u, 0x0000010fu,
+    0x3e800000u, 0x0004002bu, 0x00000006u, 0x00000110u, 0x3ee66666u, 0x0004002bu, 0x00000006u, 0x00000111u,
+    0x3f59999au, 0x0006002cu, 0x00000007u, 0x00000112u, 0x0000010fu, 0x00000110u, 0x00000111u, 0x0004002bu,
+    0x00000006u, 0x0000011fu, 0x3dd32618u, 0x0004002bu, 0x00000006u, 0x00000125u, 0x420551ecu, 0x0004002bu,
+    0x00000006u, 0x00000138u, 0x3eea8a81u, 0x0004002bu, 0x00000006u, 0x00000139u, 0x3f507b1du, 0x0004002bu,
+    0x00000006u, 0x0000013au, 0x3eb66bb9u, 0x0006002cu, 0x00000007u, 0x0000013bu, 0x00000138u, 0x00000139u,
+    0x0000013au, 0x0004002bu, 0x00000006u, 0x00000147u, 0x3b03126fu, 0x0004002bu, 0x00000006u, 0x00000151u,
+    0x6fa18f08u, 0x0004002bu, 0x00000006u, 0x00000155u, 0x3e19999au, 0x0004002bu, 0x00000006u, 0x00000159u,
+    0x3e3851ecu, 0x0004002bu, 0x00000006u, 0x0000015au, 0x3f51eb85u, 0x0004002bu, 0x00000006u, 0x00000161u,
+    0x3eb33333u, 0x0004002bu, 0x00000006u, 0x00000162u, 0x3f19999au, 0x0006002cu, 0x00000007u, 0x00000163u,
+    0x00000161u, 0x00000110u, 0x00000162u, 0x0004002bu, 0x00000006u, 0x0000016du, 0x42000000u, 0x00030029u,
+    0x0000000cu, 0x00000177u, 0x0004002bu, 0x00000006u, 0x000001ceu, 0x3fb33333u, 0x0004002bu, 0x00000006u,
+    0x000001d0u, 0x3f266666u, 0x00040017u, 0x000001d6u, 0x00000033u, 0x00000003u, 0x00040020u, 0x000001d7u,
+    0x00000007u, 0x000001d6u, 0x0006002cu, 0x00000007u, 0x000001dau, 0x00000073u, 0x00000073u, 0x00000073u,
+    0x0004002bu, 0x00000006u, 0x000001dcu, 0x437f0000u, 0x0004002bu, 0x0000006eu, 0x000001e5u, 0x00000008u,
+    0x0004002bu, 0x0000006eu, 0x000001eau, 0x00000010u, 0x0004002bu, 0x00000033u, 0x000001edu, 0xff000000u,
+    0x00040020u, 0x000001ffu, 0x00000001u, 0x000001d6u, 0x0004003bu, 0x000001ffu, 0x00000200u, 0x00000001u,
+    0x00040020u, 0x00000201u, 0x00000001u, 0x00000033u, 0x0004002bu, 0x00000006u, 0x00000239u, 0x41880000u,
+    0x0004002bu, 0x00000006u, 0x00000246u, 0x41e80000u, 0x0003001du, 0x00000283u, 0x00000033u, 0x0003001eu,
+    0x00000284u, 0x00000283u, 0x00040020u, 0x00000285u, 0x0000000cu, 0x00000284u, 0x0004003bu, 0x00000285u,
+    0x00000286u, 0x0000000cu, 0x00040020u, 0x00000293u, 0x0000000cu, 0x00000033u, 0x0004002bu, 0x00000033u,
+    0x00000295u, 0x00000008u, 0x0006002cu, 0x000001d6u, 0x00000296u, 0x00000295u, 0x00000295u, 0x000000bcu,
+    0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u, 0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003bu,
+    0x0000007bu, 0x000001f1u, 0x00000007u, 0x0004003bu, 0x0000007bu, 0x000001f5u, 0x00000007u, 0x0004003bu,
+    0x0000007bu, 0x000001f9u, 0x00000007u, 0x0004003bu, 0x0000007bu, 0x000001feu, 0x00000007u, 0x0004003bu,
+    0x0000007bu, 0x00000204u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000211u, 0x00000007u, 0x0004003bu,
+    0x0000000bu, 0x00000215u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000218u, 0x00000007u, 0x0004003bu,
+    0x0000000bu, 0x0000021cu, 0x00000007u, 0x0004003bu, 0x00000008u, 0x0000021fu, 0x00000007u, 0x0004003bu,
+    0x00000008u, 0x00000223u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000227u, 0x00000007u, 0x0004003bu,
+    0x0000007bu, 0x00000228u, 0x00000007u, 0x0004003bu, 0x00000021u, 0x00000231u, 0x00000007u, 0x0004003bu,
+    0x00000021u, 0x0000023du, 0x00000007u, 0x0004003bu, 0x00000021u, 0x0000024au, 0x00000007u, 0x0004003bu,
+    0x00000021u, 0x0000024fu, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000266u, 0x00000007u, 0x0004003bu,
+    0x00000008u, 0x00000279u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x0000027bu, 0x00000007u, 0x0004003bu,
+    0x00000014u, 0x0000027du, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000291u, 0x00000007u, 0x00060041u,
+    0x00000081u, 0x000001f2u, 0x0000007fu, 0x0000006fu, 0x00000086u, 0x0004003du, 0x00000006u, 0x000001f3u,
+    0x000001f2u, 0x0004006du, 0x00000033u, 0x000001f4u, 0x000001f3u, 0x0003003eu, 0x000001f1u, 0x000001f4u,
+    0x00060041u, 0x00000081u, 0x000001f6u, 0x0000007fu, 0x0000006fu, 0x000000bcu, 0x0004003du, 0x00000006u,
+    0x000001f7u, 0x000001f6u, 0x0004006du, 0x00000033u, 0x000001f8u, 0x000001f7u, 0x0003003eu, 0x000001f5u,
+    0x000001f8u, 0x00060041u, 0x00000081u, 0x000001fau, 0x0000007fu, 0x0000006fu, 0x00000095u, 0x0004003du,
+    0x00000006u, 0x000001fbu, 0x000001fau, 0x0004006du, 0x00000033u, 0x000001fcu, 0x000001fbu, 0x0007000cu,
+    0x00000033u, 0x000001fdu, 0x00000001u, 0x00000029u, 0x000000bcu, 0x000001fcu, 0x0003003eu, 0x000001f9u,
+    0x000001fdu, 0x00050041u, 0x00000201u, 0x00000202u, 0x00000200u, 0x00000086u, 0x0004003du, 0x00000033u,
+    0x00000203u, 0x00000202u, 0x0003003eu, 0x000001feu, 0x00000203u, 0x00050041u, 0x00000201u, 0x00000205u,
+    0x00000200u, 0x000000bcu, 0x0004003du, 0x00000033u, 0x00000206u, 0x00000205u, 0x0003003eu, 0x00000204u,
+    0x00000206u, 0x0004003du, 0x00000033u, 0x00000207u, 0x000001feu, 0x0004003du, 0x00000033u, 0x00000208u,
+    0x000001f1u, 0x000500aeu, 0x0000000cu, 0x00000209u, 0x00000207u, 0x00000208u, 0x0004003du, 0x00000033u,
+    0x0000020au, 0x00000204u, 0x0004003du, 0x00000033u, 0x0000020bu, 0x000001f5u, 0x000500aeu, 0x0000000cu,
+    0x0000020cu, 0x0000020au, 0x0000020bu, 0x000500a6u, 0x0000000cu, 0x0000020du, 0x00000209u, 0x0000020cu,
+    0x000300f7u, 0x0000020fu, 0x00000000u, 0x000400fau, 0x0000020du, 0x0000020eu, 0x0000020fu, 0x000200f8u,
+    0x0000020eu, 0x000100fdu, 0x000200f8u, 0x0000020fu, 0x00050041u, 0x00000097u, 0x00000212u, 0x0000007fu,
+    0x00000072u, 0x0004003du, 0x00000009u, 0x00000213u, 0x00000212u, 0x0008004fu, 0x00000007u, 0x00000214u,
+    0x00000213u, 0x00000213u, 0x00000000u, 0x00000001u, 0x00000002u, 0x0003003eu, 0x00000211u, 0x00000214u,
+    0x00060041u, 0x00000081u, 0x00000216u, 0x0000007fu, 0x00000072u, 0x00000045u, 0x0004003du, 0x00000006u,
+    0x00000217u, 0x00000216u, 0x0003003eu, 0x00000215u, 0x00000217u, 0x00050041u, 0x00000097u, 0x00000219u,
+    0x0000007fu, 0x00000076u, 0x0004003du, 0x00000009u, 0x0000021au, 0x00000219u, 0x0008004fu, 0x00000007u,
+    0x0000021bu, 0x0000021au, 0x0000021au, 0x00000000u, 0x00000001u, 0x00000002u, 0x0003003eu, 0x00000218u,
+    0x0000021bu, 0x00060041u, 0x00000081u, 0x0000021du, 0x0000007fu, 0x00000076u, 0x00000045u, 0x0004003du,
+    0x00000006u, 0x0000021eu, 0x0000021du, 0x0003003eu, 0x0000021cu, 0x0000021eu, 0x00050041u, 0x00000097u,
+    0x00000220u, 0x0000007fu, 0x00000079u, 0x0004003du, 0x00000009u, 0x00000221u, 0x00000220u, 0x0008004fu,
+    0x00000007u, 0x00000222u, 0x00000221u, 0x00000221u, 0x00000000u, 0x00000001u, 0x00000002u, 0x0003003eu,
+    0x0000021fu, 0x00000222u, 0x00050041u, 0x00000097u, 0x00000224u, 0x0000007fu, 0x00000080u, 0x0004003du,
+    0x00000009u, 0x00000225u, 0x00000224u, 0x0008004fu, 0x00000007u, 0x00000226u, 0x00000225u, 0x00000225u,
+    0x00000000u, 0x00000001u, 0x00000002u, 0x0003003eu, 0x00000223u, 0x00000226u, 0x0003003eu, 0x00000227u,
+    0x00000077u, 0x0003003eu, 0x00000228u, 0x00000086u, 0x000200f9u, 0x00000229u, 0x000200f8u, 0x00000229u,
+    0x000400f6u, 0x0000022bu, 0x0000022cu, 0x00000000u, 0x000200f9u, 0x0000022du, 0x000200f8u, 0x0000022du,
+    0x0004003du, 0x00000033u, 0x0000022eu, 0x00000228u, 0x0004003du, 0x00000033u, 0x0000022fu, 0x000001f9u,
+    0x000500b0u, 0x0000000cu, 0x00000230u, 0x0000022eu, 0x0000022fu, 0x000400fau, 0x00000230u, 0x0000022au,
+    0x0000022bu, 0x000200f8u, 0x0000022au, 0x0004003du, 0x00000033u, 0x00000232u, 0x000001feu, 0x00040070u,
+    0x00000006u, 0x00000233u, 0x00000232u, 0x0004003du, 0x00000033u, 0x00000234u, 0x00000204u, 0x00040070u,
+    0x00000006u, 0x00000235u, 0x00000234u, 0x00050050u, 0x00000020u, 0x00000236u, 0x00000233u, 0x00000235u,
+    0x0004003du, 0x00000033u, 0x00000237u, 0x00000228u, 0x00040070u, 0x00000006u, 0x00000238u, 0x00000237u,
+    0x00050085u, 0x00000006u, 0x0000023au, 0x00000238u, 0x00000239u, 0x00050050u, 0x00000020u, 0x0000023bu,
+    0x0000023au, 0x0000023au, 0x00050081u, 0x00000020u, 0x0000023cu, 0x00000236u, 0x0000023bu, 0x0003003eu,
+    0x0000023du, 0x0000023cu, 0x00050039u, 0x00000006u, 0x0000023eu, 0x00000024u, 0x0000023du, 0x0004003du,
+    0x00000033u, 0x0000023fu, 0x00000204u, 0x00040070u, 0x00000006u, 0x00000240u, 0x0000023fu, 0x0004003du,
+    0x00000033u, 0x00000241u, 0x000001feu, 0x00040070u, 0x00000006u, 0x00000242u, 0x00000241u, 0x00050050u,
+    0x00000020u, 0x00000243u, 0x00000240u, 0x00000242u, 0x0004003du, 0x00000033u, 0x00000244u, 0x00000228u,
+    0x00040070u, 0x00000006u, 0x00000245u, 0x00000244u, 0x00050085u, 0x00000006u, 0x00000247u, 0x00000245u,
+    0x00000246u, 0x00050050u, 0x00000020u, 0x00000248u, 0x00000247u, 0x00000247u, 0x00050081u, 0x00000020u,
+    0x00000249u, 0x00000243u, 0x00000248u, 0x0003003eu, 0x0000024au, 0x00000249u, 0x00050039u, 0x00000006u,
+    0x0000024bu, 0x00000024u, 0x0000024au, 0x00050050u, 0x00000020u, 0x0000024cu, 0x0000023eu, 0x0000024bu,
+    0x00050050u, 0x00000020u, 0x0000024du, 0x00000107u, 0x00000107u, 0x00050083u, 0x00000020u, 0x0000024eu,
+    0x0000024cu, 0x0000024du, 0x0003003eu, 0x00000231u, 0x0000024eu, 0x0004003du, 0x00000033u, 0x00000250u,
+    0x000001feu, 0x00040070u, 0x00000006u, 0x00000251u, 0x00000250u, 0x0004003du, 0x00000033u, 0x00000252u,
+    0x00000204u, 0x00040070u, 0x00000006u, 0x00000253u, 0x00000252u, 0x00050050u, 0x00000020u, 0x00000254u,
+    0x00000251u, 0x00000253u, 0x00050050u, 0x00000020u, 0x00000255u, 0x00000107u, 0x00000107u, 0x00050081u,
+    0x00000020u, 0x00000256u, 0x00000254u, 0x00000255u, 0x0004003du, 0x00000020u, 0x00000257u, 0x00000231u,
+    0x00050081u, 0x00000020u, 0x00000258u, 0x00000256u, 0x00000257u, 0x0004003du, 0x00000033u, 0x00000259u,
+    0x000001f1u, 0x00040070u, 0x00000006u, 0x0000025au, 0x00000259u, 0x0004003du, 0x00000033u, 0x0000025bu,
+    0x000001f5u, 0x00040070u, 0x00000006u, 0x0000025cu, 0x0000025bu, 0x00050050u, 0x00000020u, 0x0000025du,
+    0x0000025au, 0x0000025cu, 0x00050088u, 0x00000020u, 0x0000025eu, 0x00000258u, 0x0000025du, 0x0005008eu,
+    0x00000020u, 0x0000025fu, 0x0000025eu, 0x000000efu, 0x00050050u, 0x00000020u, 0x00000260u, 0x00000073u,
+    0x00000073u, 0x00050083u, 0x00000020u, 0x00000261u, 0x0000025fu, 0x00000260u, 0x0003003eu, 0x0000024fu,
+    0x00000261u, 0x00050041u, 0x0000000bu, 0x00000262u, 0x0000024fu, 0x000000bcu, 0x0004003du, 0x00000006u,
+    0x00000263u, 0x00000262u, 0x0004007fu, 0x00000006u, 0x00000264u, 0x00000263u, 0x00050041u, 0x0000000bu,
+    0x00000265u, 0x0000024fu, 0x000000bcu, 0x0003003eu, 0x00000265u, 0x00000264u, 0x0004003du, 0x00000007u,
+    0x00000267u, 0x00000223u, 0x0004003du, 0x00000007u, 0x00000268u, 0x00000218u, 0x00050041u, 0x0000000bu,
+    0x00000269u, 0x0000024fu, 0x00000086u, 0x0004003du, 0x00000006u, 0x0000026au, 0x00000269u, 0x0004003du,
+    0x00000006u, 0x0000026bu, 0x00000215u, 0x00050085u, 0x00000006u, 0x0000026cu, 0x0000026au, 0x0000026bu,
+    0x0004003du, 0x00000006u, 0x0000026du, 0x0000021cu, 0x00050085u, 0x00000006u, 0x0000026eu, 0x0000026cu,
+    0x0000026du, 0x0005008eu, 0x00000007u, 0x0000026fu, 0x00000268u, 0x0000026eu, 0x00050081u, 0x00000007u,
+    0x00000270u, 0x00000267u, 0x0000026fu, 0x0004003du, 0x00000007u, 0x00000271u, 0x0000021fu, 0x00050041u,
+    0x0000000bu, 0x00000272u, 0x0000024fu, 0x000000bcu, 0x0004003du, 0x00000006u, 0x00000273u, 0x00000272u,
+    0x0004003du, 0x00000006u, 0x00000274u, 0x00000215u, 0x00050085u, 0x00000006u, 0x00000275u, 0x00000273u,
+    0x00000274u, 0x0005008eu, 0x00000007u, 0x00000276u, 0x00000271u, 0x00000275u, 0x00050081u, 0x00000007u,
+    0x00000277u, 0x00000270u, 0x00000276u, 0x0006000cu, 0x00000007u, 0x00000278u, 0x00000001u, 0x00000045u,
+    0x00000277u, 0x0003003eu, 0x00000266u, 0x00000278u, 0x0004003du, 0x00000007u, 0x0000027au, 0x00000211u,
+    0x0003003eu, 0x00000279u, 0x0000027au, 0x0004003du, 0x00000007u, 0x0000027cu, 0x00000266u, 0x0003003eu,
+    0x0000027bu, 0x0000027cu, 0x0003003eu, 0x0000027du, 0x00000177u, 0x00070039u, 0x00000007u, 0x0000027eu,
+    0x00000031u, 0x00000279u, 0x0000027bu, 0x0000027du, 0x0004003du, 0x00000007u, 0x0000027fu, 0x00000227u,
+    0x00050081u, 0x00000007u, 0x00000280u, 0x0000027fu, 0x0000027eu, 0x0003003eu, 0x00000227u, 0x00000280u,
+    0x000200f9u, 0x0000022cu, 0x000200f8u, 0x0000022cu, 0x0004003du, 0x00000033u, 0x00000281u, 0x00000228u,
+    0x00050080u, 0x00000033u, 0x00000282u, 0x00000281u, 0x00000072u, 0x0003003eu, 0x00000228u, 0x00000282u,
+    0x000200f9u, 0x00000229u, 0x000200f8u, 0x0000022bu, 0x0004003du, 0x00000033u, 0x00000287u, 0x00000204u,
+    0x0004003du, 0x00000033u, 0x00000288u, 0x000001f1u, 0x00050084u, 0x00000033u, 0x00000289u, 0x00000287u,
+    0x00000288u, 0x0004003du, 0x00000033u, 0x0000028au, 0x000001feu, 0x00050080u, 0x00000033u, 0x0000028bu,
+    0x00000289u, 0x0000028au, 0x0004003du, 0x00000007u, 0x0000028cu, 0x00000227u, 0x0004003du, 0x00000033u,
+    0x0000028du, 0x000001f9u, 0x00040070u, 0x00000006u, 0x0000028eu, 0x0000028du, 0x00060050u, 0x00000007u,
+    0x0000028fu, 0x0000028eu, 0x0000028eu, 0x0000028eu, 0x00050088u, 0x00000007u, 0x00000290u, 0x0000028cu,
+    0x0000028fu, 0x0003003eu, 0x00000291u, 0x00000290u, 0x00050039u, 0x00000033u, 0x00000292u, 0x00000036u,
+    0x00000291u, 0x00060041u, 0x00000293u, 0x00000294u, 0x00000286u, 0x0000006fu, 0x0000028bu, 0x0003003eu,
+    0x00000294u, 0x00000292u, 0x000100fdu, 0x00010038u, 0x00050036u, 0x0000000cu, 0x00000012u, 0x00000000u,
+    0x0000000du, 0x00030037u, 0x00000008u, 0x0000000eu, 0x00030037u, 0x00000008u, 0x0000000fu, 0x00030037u,
+    0x0000000au, 0x00000010u, 0x00030037u, 0x0000000bu, 0x00000011u, 0x000200f8u, 0x00000013u, 0x0004003bu,
+    0x00000008u, 0x00000038u, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x0000003du, 0x00000007u, 0x0004003bu,
+    0x0000000bu, 0x00000041u, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x0000004cu, 0x00000007u, 0x0004003bu,
+    0x0000000bu, 0x00000059u, 0x00000007u, 0x0004003du, 0x00000007u, 0x00000039u, 0x0000000eu, 0x0004003du,
+    0x00000009u, 0x0000003au, 0x00000010u, 0x0008004fu, 0x00000007u, 0x0000003bu, 0x0000003au, 0x0000003au,
+    0x00000000u, 0x00000001u, 0x00000002u, 0x00050083u, 0x00000007u, 0x0000003cu, 0x00000039u, 0x0000003bu,
+    0x0003003eu, 0x00000038u, 0x0000003cu, 0x0004003du, 0x00000007u, 0x0000003eu, 0x00000038u, 0x0004003du,
+    0x00000007u, 0x0000003fu, 0x0000000fu, 0x00050094u, 0x00000006u, 0x00000040u, 0x0000003eu, 0x0000003fu,
+    0x0003003eu, 0x0000003du, 0x00000040u, 0x0004003du, 0x00000007u, 0x00000042u, 0x00000038u, 0x0004003du,
+    0x00000007u, 0x00000043u, 0x00000038u, 0x00050094u, 0x00000006u, 0x00000044u, 0x00000042u, 0x00000043u,
+    0x00050041u, 0x0000000bu, 0x00000046u, 0x00000010u, 0x00000045u, 0x0004003du, 0x00000006u, 0x00000047u,
+    0x00000046u, 0x00050041u, 0x0000000bu, 0x00000048u, 0x00000010u, 0x00000045u, 0x0004003du, 0x00000006u,
+    0x00000049u, 0x00000048u, 0x00050085u, 0x00000006u, 0x0000004au, 0x00000047u, 0x00000049u, 0x00050083u,
+    0x00000006u, 0x0000004bu, 0x00000044u, 0x0000004au, 0x0003003eu, 0x00000041u, 0x0000004bu, 0x0004003du,
+    0x00000006u, 0x0000004du, 0x0000003du, 0x0004003du, 0x00000006u, 0x0000004eu, 0x0000003du, 0x00050085u,
+    0x00000006u, 0x0000004fu, 0x0000004du, 0x0000004eu, 0x0004003du, 0x00000006u, 0x00000050u, 0x00000041u,
+    0x00050083u, 0x00000006u, 0x00000051u, 0x0000004fu, 0x00000050u, 0x0003003eu, 0x0000004cu, 0x00000051u,
+    0x0004003du, 0x00000006u, 0x00000052u, 0x0000004cu, 0x000500b8u, 0x0000000cu, 0x00000054u, 0x00000052u,
+    0x00000053u, 0x000300f7u, 0x00000056u, 0x00000000u, 0x000400fau, 0x00000054u, 0x00000055u, 0x00000056u,
+    0x000200f8u, 0x00000055u, 0x000200feu, 0x00000057u, 0x000200f8u, 0x00000056u, 0x0004003du, 0x00000006u,
+    0x0000005au, 0x0000004cu, 0x0006000cu, 0x00000006u, 0x0000005bu, 0x00000001u, 0x0000001fu, 0x0000005au,
+    0x0003003eu, 0x00000059u, 0x0000005bu, 0x0004003du, 0x00000006u, 0x0000005cu, 0x0000003du, 0x0004007fu,
+    0x00000006u, 0x0000005du, 0x0000005cu, 0x0004003du, 0x00000006u, 0x0000005eu, 0x00000059u, 0x00050083u,
+    0x00000006u, 0x0000005fu, 0x0000005du, 0x0000005eu, 0x0003003eu, 0x00000011u, 0x0000005fu, 0x0004003du,
+    0x00000006u, 0x00000060u, 0x00000011u, 0x000500b8u, 0x0000000cu, 0x00000062u, 0x00000060u, 0x00000061u,
+    0x000300f7u, 0x00000064u, 0x00000000u, 0x000400fau, 0x00000062u, 0x00000063u, 0x00000064u, 0x000200f8u,
+    0x00000063u, 0x0004003du, 0x00000006u, 0x00000065u, 0x0000003du, 0x0004007fu, 0x00000006u, 0x00000066u,
+    0x00000065u, 0x0004003du, 0x00000006u, 0x00000067u, 0x00000059u, 0x00050081u, 0x00000006u, 0x00000068u,
+    0x00000066u, 0x00000067u, 0x0003003eu, 0x00000011u, 0x00000068u, 0x000200f9u, 0x00000064u, 0x000200f8u,
+    0x00000064u, 0x0004003du, 0x00000006u, 0x00000069u, 0x00000011u, 0x000500bau, 0x0000000cu, 0x0000006au,
+    0x00000069u, 0x00000061u, 0x000200feu, 0x0000006au, 0x00010038u, 0x00050036u, 0x00000015u, 0x0000001au,
+    0x00000000u, 0x00000016u, 0x00030037u, 0x00000008u, 0x00000017u, 0x00030037u, 0x00000008u, 0x00000018u,
+    0x00030037u, 0x00000014u, 0x00000019u, 0x000200f8u, 0x0000001bu, 0x0004003bu, 0x00000026u, 0x0000006du,
+    0x00000007u, 0x0004003bu, 0x0000007bu, 0x0000007cu, 0x00000007u, 0x0004003bu, 0x0000007bu, 0x00000085u,
+    0x00000007u, 0x0004003bu, 0x0000000au, 0x0000008fu, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x0000009au,
+    0x00000007u, 0x0004003bu, 0x00000008u, 0x0000009bu, 0x00000007u, 0x0004003bu, 0x00000008u, 0x0000009du,
+    0x00000007u, 0x0004003bu, 0x0000000au, 0x0000009fu, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x000000a1u,
+    0x00000007u, 0x0004003bu, 0x0000000au, 0x000000b9u, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x000000cfu,
+    0x00000007u, 0x0004003bu, 0x00000008u, 0x000000e1u, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x000000e7u,
+    0x00000007u, 0x00050041u, 0x0000000bu, 0x00000071u, 0x0000006du, 0x0000006fu, 0x0003003eu, 0x00000071u,
+    0x00000070u, 0x00050041u, 0x00000008u, 0x00000075u, 0x0000006du, 0x00000072u, 0x0003003eu, 0x00000075u,
+    0x00000074u, 0x00050041u, 0x00000008u, 0x00000078u, 0x0000006du, 0x00000076u, 0x0003003eu, 0x00000078u,
+    0x00000077u, 0x00050041u, 0x0000000bu, 0x0000007au, 0x0000006du, 0x00000079u, 0x0003003eu, 0x0000007au,
+    0x00000053u, 0x00060041u, 0x00000081u, 0x00000082u, 0x0000007fu, 0x00000080u, 0x00000045u, 0x0004003du,
+    0x00000006u, 0x00000083u, 0x00000082u, 0x0004006du, 0x00000033u, 0x00000084u, 0x00000083u, 0x0003003eu,
+    0x0000007cu, 0x00000084u, 0x0003003eu, 0x00000085u, 0x00000086u, 0x000200f9u, 0x00000087u, 0x000200f8u,
+    0x00000087u, 0x000400f6u, 0x00000089u, 0x0000008au, 0x00000000u, 0x000200f9u, 0x0000008bu, 0x000200f8u,
+    0x0000008bu, 0x0004003du, 0x00000033u, 0x0000008cu, 0x00000085u, 0x0004003du, 0x00000033u, 0x0000008du,
+    0x0000007cu, 0x000500b0u, 0x0000000cu, 0x0000008eu, 0x0000008cu, 0x0000008du, 0x000400fau, 0x0000008eu,
+    0x00000088u, 0x00000089u, 0x000200f8u, 0x00000088u, 0x0004003du, 0x00000033u, 0x00000094u, 0x00000085u,
+    0x00050084u, 0x00000033u, 0x00000096u, 0x00000094u, 0x00000095u, 0x00060041u, 0x00000097u, 0x00000098u,
+    0x00000093u, 0x0000006fu, 0x00000096u, 0x0004003du, 0x00000009u, 0x00000099u, 0x00000098u, 0x0003003eu,
+    0x0000008fu, 0x00000099u, 0x0004003du, 0x00000007u, 0x0000009cu, 0x00000017u, 0x0003003eu, 0x0000009bu,
+    0x0000009cu, 0x0004003du, 0x00000007u, 0x0000009eu, 0x00000018u, 0x0003003eu, 0x0000009du, 0x0000009eu,
+    0x0004003du, 0x00000009u, 0x000000a0u, 0x0000008fu, 0x0003003eu, 0x0000009fu, 0x000000a0u, 0x00080039u,
+    0x0000000cu, 0x000000a2u, 0x00000012u, 0x0000009bu, 0x0000009du, 0x0000009fu, 0x000000a1u, 0x0004003du,
+    0x00000006u, 0x000000a3u, 0x000000a1u, 0x0003003eu, 0x0000009au, 0x000000a3u, 0x000300f7u, 0x000000a5u,
+    0x00000000u, 0x000400fau, 0x000000a2u, 0x000000a4u, 0x000000a5u, 0x000200f8u, 0x000000a4u, 0x0004003du,
+    0x00000006u, 0x000000a6u, 0x0000009au, 0x00050041u, 0x0000000bu, 0x000000a7u, 0x0000006du, 0x0000006fu,
+    0x0004003du, 0x00000006u, 0x000000a8u, 0x000000a7u, 0x000500b8u, 0x0000000cu, 0x000000a9u, 0x000000a6u,
+    0x000000a8u, 0x000200f9u, 0x000000a5u, 0x000200f8u, 0x000000a5u, 0x000700f5u, 0x0000000cu, 0x000000aau,
+    0x000000a2u, 0x00000088u, 0x000000a9u, 0x000000a4u, 0x000300f7u, 0x000000acu, 0x00000000u, 0x000400fau,
+    0x000000aau, 0x000000abu, 0x000000acu, 0x000200f8u, 0x000000abu, 0x0004003du, 0x00000006u, 0x000000adu,
+    0x0000009au, 0x00050041u, 0x0000000bu, 0x000000aeu, 0x0000006du, 0x0000006fu, 0x0003003eu, 0x000000aeu,
+    0x000000adu, 0x0004003du, 0x00000007u, 0x000000afu, 0x00000017u, 0x0004003du, 0x00000007u, 0x000000b0u,
+    0x00000018u, 0x0004003du, 0x00000006u, 0x000000b1u, 0x0000009au, 0x0005008eu, 0x00000007u, 0x000000b2u,
+    0x000000b0u, 0x000000b1u, 0x00050081u, 0x00000007u, 0x000000b3u, 0x000000afu, 0x000000b2u, 0x0004003du,
+    0x00000009u, 0x000000b4u, 0x0000008fu, 0x0008004fu, 0x00000007u, 0x000000b5u, 0x000000b4u, 0x000000b4u,
+    0x00000000u, 0x00000001u, 0x00000002u, 0x00050083u, 0x00000007u, 0x000000b6u, 0x000000b3u, 0x000000b5u,
+    0x0006000cu, 0x00000007u, 0x000000b7u, 0x00000001u, 0x00000045u, 0x000000b6u, 0x00050041u, 0x00000008u,
+    0x000000b8u, 0x0000006du, 0x00000072u, 0x0003003eu, 0x000000b8u, 0x000000b7u, 0x0004003du, 0x00000033u,
+    0x000000bau, 0x00000085u, 0x00050084u, 0x00000033u, 0x000000bbu, 0x000000bau, 0x00000095u, 0x00050080u,
+    0x00000033u, 0x000000bdu, 0x000000bbu, 0x000000bcu, 0x00060041u, 0x00000097u, 0x000000beu, 0x00000093u,
+    0x0000006fu, 0x000000bdu, 0x0004003du, 0x00000009u, 0x000000bfu, 0x000000beu, 0x0003003eu, 0x000000b9u,
+    0x000000bfu, 0x0004003du, 0x00000009u, 0x000000c0u, 0x000000b9u, 0x0008004fu, 0x00000007u, 0x000000c1u,
+    0x000000c0u, 0x000000c0u, 0x00000000u, 0x00000001u, 0x00000002u, 0x00050041u, 0x00000008u, 0x000000c2u,
+    0x0000006du, 0x00000076u, 0x0003003eu, 0x000000c2u, 0x000000c1u, 0x00050041u, 0x0000000bu, 0x000000c3u,
+    0x000000b9u, 0x00000045u, 0x0004003du, 0x00000006u, 0x000000c4u, 0x000000c3u, 0x00050041u, 0x0000000bu,
+    0x000000c5u, 0x0000006du, 0x00000079u, 0x0003003eu, 0x000000c5u, 0x000000c4u, 0x000200f9u, 0x000000acu,
+    0x000200f8u, 0x000000acu, 0x000200f9u, 0x0000008au, 0x000200f8u, 0x0000008au, 0x0004003du, 0x00000033u,
+    0x000000c6u, 0x00000085u, 0x00050080u, 0x00000033u, 0x000000c7u, 0x000000c6u, 0x00000072u, 0x0003003eu,
+    0x00000085u, 0x000000c7u, 0x000200f9u, 0x00000087u, 0x000200f8u, 0x00000089u, 0x00050041u, 0x0000000bu,
+    0x000000c8u, 0x00000018u, 0x000000bcu, 0x0004003du, 0x00000006u, 0x000000c9u, 0x000000c8u, 0x0006000cu,
+    0x00000006u, 0x000000cau, 0x00000001u, 0x00000004u, 0x000000c9u, 0x000500bau, 0x0000000cu, 0x000000ccu,
+    0x000000cau, 0x000000cbu, 0x000300f7u, 0x000000ceu, 0x00000000u, 0x000400fau, 0x000000ccu, 0x000000cdu,
+    0x000000ceu, 0x000200f8u, 0x000000cdu, 0x00050041u, 0x0000000bu, 0x000000d0u, 0x00000017u, 0x000000bcu,
+    0x0004003du, 0x00000006u, 0x000000d1u, 0x000000d0u, 0x0004007fu, 0x00000006u, 0x000000d2u, 0x000000d1u,
+    0x00050041u, 0x0000000bu, 0x000000d3u, 0x00000018u, 0x000000bcu, 0x0004003du, 0x00000006u, 0x000000d4u,
+    0x000000d3u, 0x00050088u, 0x00000006u, 0x000000d5u, 0x000000d2u, 0x000000d4u, 0x0003003eu, 0x000000cfu,
+    0x000000d5u, 0x0004003du, 0x00000006u, 0x000000d6u, 0x000000cfu, 0x000500bau, 0x0000000cu, 0x000000d7u,
+    0x000000d6u, 0x00000061u, 0x000300f7u, 0x000000d9u, 0x00000000u, 0x000400fau, 0x000000d7u, 0x000000d8u,
+    0x000000d9u, 0x000200f8u, 0x000000d8u, 0x0004003du, 0x00000006u, 0x000000dau, 0x000000cfu, 0x00050041u,
+    0x0000000bu, 0x000000dbu, 0x0000006du, 0x0000006fu, 0x0004003du, 0x00000006u, 0x000000dcu, 0x000000dbu,
+    0x000500b8u, 0x0000000cu, 0x000000ddu, 0x000000dau, 0x000000dcu, 0x000200f9u, 0x000000d9u, 0x000200f8u,
+    0x000000d9u, 0x000700f5u, 0x0000000cu, 0x000000deu, 0x000000d7u, 0x000000cdu, 0x000000ddu, 0x000000d8u,
+    0x000300f7u, 0x000000e0u, 0x00000000u, 0x000400fau, 0x000000deu, 0x000000dfu, 0x000000e0u, 0x000200f8u,
+    0x000000dfu, 0x0004003du, 0x00000007u, 0x000000e2u, 0x00000017u, 0x0004003du, 0x00000007u, 0x000000e3u,
+    0x00000018u, 0x0004003du, 0x00000006u, 0x000000e4u, 0x000000cfu, 0x0005008eu, 0x00000007u, 0x000000e5u,
+    0x000000e3u, 0x000000e4u, 0x00050081u, 0x00000007u, 0x000000e6u, 0x000000e2u, 0x000000e5u, 0x0003003eu,
+    0x000000e1u, 0x000000e6u, 0x00050041u, 0x0000000bu, 0x000000e8u, 0x000000e1u, 0x00000086u, 0x0004003du,
+    0x00000006u, 0x000000e9u, 0x000000e8u, 0x0006000cu, 0x00000006u, 0x000000eau, 0x00000001u, 0x00000008u,
+    0x000000e9u, 0x00050041u, 0x0000000bu, 0x000000ebu, 0x000000e1u, 0x00000095u, 0x0004003du, 0x00000006u,
+    0x000000ecu, 0x000000ebu, 0x0006000cu, 0x00000006u, 0x000000edu, 0x00000001u, 0x00000008u, 0x000000ecu,
+    0x00050081u, 0x00000006u, 0x000000eeu, 0x000000eau, 0x000000edu, 0x0005008du, 0x00000006u, 0x000000f0u,
+    0x000000eeu, 0x000000efu, 0x0003003eu, 0x000000e7u, 0x000000f0u, 0x0004003du, 0x00000006u, 0x000000f1u,
+    0x000000cfu, 0x00050041u, 0x0000000bu, 0x000000f2u, 0x0000006du, 0x0000006fu, 0x0003003eu, 0x000000f2u,
+    0x000000f1u, 0x00050041u, 0x00000008u, 0x000000f3u, 0x0000006du, 0x00000072u, 0x0003003eu, 0x000000f3u,
+    0x00000074u, 0x0004003du, 0x00000006u, 0x000000fcu, 0x000000e7u, 0x00060050u, 0x00000007u, 0x000000fdu,
+    0x000000fcu, 0x000000fcu, 0x000000fcu, 0x0008000cu, 0x00000007u, 0x000000feu, 0x00000001u, 0x0000002eu,
+    0x000000f7u, 0x000000fbu, 0x000000fdu, 0x00050041u, 0x00000008u, 0x000000ffu, 0x0000006du, 0x00000076u,
+    0x0003003eu, 0x000000ffu, 0x000000feu, 0x00050041u, 0x0000000bu, 0x00000100u, 0x0000006du, 0x00000079u,
+    0x0003003eu, 0x00000100u, 0x00000053u, 0x000200f9u, 0x000000e0u, 0x000200f8u, 0x000000e0u, 0x000200f9u,
+    0x000000ceu, 0x000200f8u, 0x000000ceu, 0x0004003du, 0x00000015u, 0x00000101u, 0x0000006du, 0x000200feu,
+    0x00000101u, 0x00010038u, 0x00050036u, 0x00000007u, 0x0000001eu, 0x00000000u, 0x0000001cu, 0x00030037u,
+    0x00000008u, 0x0000001du, 0x000200f8u, 0x0000001fu, 0x0004003bu, 0x0000000bu, 0x00000104u, 0x00000007u,
+    0x00050041u, 0x0000000bu, 0x00000105u, 0x0000001du, 0x000000bcu, 0x0004003du, 0x00000006u, 0x00000106u,
+    0x00000105u, 0x00050085u, 0x00000006u, 0x00000108u, 0x00000106u, 0x00000107u, 0x00050081u, 0x00000006u,
+    0x00000109u, 0x00000108u, 0x00000107u, 0x0008000cu, 0x00000006u, 0x0000010au, 0x00000001u, 0x0000002bu,
+    0x00000109u, 0x00000053u, 0x00000073u, 0x0003003eu, 0x00000104u, 0x0000010au, 0x0004003du, 0x00000006u,
+    0x00000113u, 0x00000104u, 0x00060050u, 0x00000007u, 0x00000114u, 0x00000113u, 0x00000113u, 0x00000113u,
+    0x0008000cu, 0x00000007u, 0x00000115u, 0x00000001u, 0x0000002eu, 0x0000010eu, 0x00000112u, 0x00000114u,
+    0x000200feu, 0x00000115u, 0x00010038u, 0x00050036u, 0x00000006u, 0x00000024u, 0x00000000u, 0x00000022u,
+    0x00030037u, 0x00000021u, 0x00000023u, 0x000200f8u, 0x00000025u, 0x0004003bu, 0x00000008u, 0x00000118u,
+    0x00000007u, 0x0004003du, 0x00000020u, 0x00000119u, 0x00000023u, 0x0008004fu, 0x00000007u, 0x0000011au,
+    0x00000119u, 0x00000119u, 0x00000000u, 0x00000001u, 0x00000000u, 0x00050051u, 0x00000006u, 0x0000011bu,
+    0x0000011au, 0x00000000u, 0x00050051u, 0x00000006u, 0x0000011cu, 0x0000011au, 0x00000001u, 0x00050051u,
+    0x00000006u, 0x0000011du, 0x0000011au, 0x00000002u, 0x00060050u, 0x00000007u, 0x0000011eu, 0x0000011bu,
+    0x0000011cu, 0x0000011du, 0x0005008eu, 0x00000007u, 0x00000120u, 0x0000011eu, 0x0000011fu, 0x0006000cu,
+    0x00000007u, 0x00000121u, 0x00000001u, 0x0000000au, 0x00000120u, 0x0003003eu, 0x00000118u, 0x00000121u,
+    0x0004003du, 0x00000007u, 0x00000122u, 0x00000118u, 0x0004003du, 0x00000007u, 0x00000123u, 0x00000118u,
+    0x0008004fu, 0x00000007u, 0x00000124u, 0x00000123u, 0x00000123u, 0x00000001u, 0x00000002u, 0x00000000u,
+    0x00060050u, 0x00000007u, 0x00000126u, 0x00000125u, 0x00000125u, 0x00000125u, 0x00050081u, 0x00000007u,
+    0x00000127u, 0x00000124u, 0x00000126u, 0x00050094u, 0x00000006u, 0x00000128u, 0x00000122u, 0x00000127u,
+    0x0004003du, 0x00000007u, 0x00000129u, 0x00000118u, 0x00060050u, 0x00000007u, 0x0000012au, 0x00000128u,
+    0x00000128u, 0x00000128u, 0x00050081u, 0x00000007u, 0x0000012bu, 0x00000129u, 0x0000012au, 0x0003003eu,
+    0x00000118u, 0x0000012bu, 0x00050041u, 0x0000000bu, 0x0000012cu, 0x00000118u, 0x00000086u, 0x0004003du,
+    0x00000006u, 0x0000012du, 0x0000012cu, 0x00050041u, 0x0000000bu, 0x0000012eu, 0x00000118u, 0x000000bcu,
+    0x0004003du, 0x00000006u, 0x0000012fu, 0x0000012eu, 0x00050081u, 0x00000006u, 0x00000130u, 0x0000012du,
+    0x0000012fu, 0x00050041u, 0x0000000bu, 0x00000131u, 0x00000118u, 0x00000095u, 0x0004003du, 0x00000006u,
+    0x00000132u, 0x00000131u, 0x00050085u, 0x00000006u, 0x00000133u, 0x00000130u, 0x00000132u, 0x0006000cu,
+    0x00000006u, 0x00000134u, 0x00000001u, 0x0000000au, 0x00000133u, 0x000200feu, 0x00000134u, 0x00010038u,
+    0x00050036u, 0x00000007u, 0x0000002bu, 0x00000000u, 0x00000027u, 0x00030037u, 0x00000026u, 0x00000028u,
+    0x00030037u, 0x00000008u, 0x00000029u, 0x00030037u, 0x00000008u, 0x0000002au, 0x000200f8u, 0x0000002cu,
+    0x0004003bu, 0x00000008u, 0x00000137u, 0x00000007u, 0x0004003bu, 0x0000000bu, 0x0000013cu, 0x00000007u,
+    0x0004003bu, 0x0000000bu, 0x00000142u, 0x00000007u, 0x0004003bu, 0x00000026u, 0x00000143u, 0x00000007u,
+    0x0004003bu, 0x00000008u, 0x0000014au, 0x00000007u, 0x0004003bu, 0x00000008u, 0x0000014bu, 0x00000007u,
+    0x0004003bu, 0x00000014u, 0x0000014du, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000156u, 0x00000007u,
+    0x0003003eu, 0x00000137u, 0x0000013bu, 0x00050041u, 0x00000008u, 0x0000013du, 0x00000028u, 0x00000072u,
+    0x0004003du, 0x00000007u, 0x0000013eu, 0x0000013du, 0x0004003du, 0x00000007u, 0x0000013fu, 0x00000137u,
+    0x00050094u, 0x00000006u, 0x00000140u, 0x0000013eu, 0x0000013fu, 0x0007000cu, 0x00000006u, 0x00000141u,
+    0x00000001u, 0x00000028u, 0x00000140u, 0x00000053u, 0x0003003eu, 0x0000013cu, 0x00000141u, 0x0003003eu,
+    0x00000142u, 0x00000073u, 0x0004003du, 0x00000007u, 0x00000144u, 0x00000029u, 0x00050041u, 0x00000008u,
+    0x00000145u, 0x00000028u, 0x00000072u, 0x0004003du, 0x00000007u, 0x00000146u, 0x00000145u, 0x0005008eu,
+    0x00000007u, 0x00000148u, 0x00000146u, 0x00000147u, 0x00050081u, 0x00000007u, 0x00000149u, 0x00000144u,
+    0x00000148u, 0x0003003eu, 0x0000014au, 0x00000149u, 0x0004003du, 0x00000007u, 0x0000014cu, 0x00000137u,
+    0x0003003eu, 0x0000014bu, 0x0000014cu, 0x0003003eu, 0x0000014du, 0x00000057u, 0x00070039u, 0x00000015u,
+    0x0000014eu, 0x0000001au, 0x0000014au, 0x0000014bu, 0x0000014du, 0x0003003eu, 0x00000143u, 0x0000014eu,
+    0x00050041u, 0x0000000bu, 0x0000014fu, 0x00000143u, 0x0000006fu, 0x0004003du, 0x00000006u, 0x00000150u,
+    0x0000014fu, 0x000500b8u, 0x0000000cu, 0x00000152u, 0x00000150u, 0x00000151u, 0x000300f7u, 0x00000154u,
+    0x00000000u, 0x000400fau, 0x00000152u, 0x00000153u, 0x00000154u, 0x000200f8u, 0x00000153u, 0x0003003eu,
+    0x00000142u, 0x00000155u, 0x000200f9u, 0x00000154u, 0x000200f8u, 0x00000154u, 0x00050041u, 0x00000008u,
+    0x00000157u, 0x00000028u, 0x00000076u, 0x0004003du, 0x00000007u, 0x00000158u, 0x00000157u, 0x0004003du,
+    0x00000006u, 0x0000015bu, 0x0000013cu, 0x00050085u, 0x00000006u, 0x0000015cu, 0x0000015au, 0x0000015bu,
+    0x0004003du, 0x00000006u, 0x0000015du, 0x00000142u, 0x00050085u, 0x00000006u, 0x0000015eu, 0x0000015cu,
+    0x0000015du, 0x00050081u, 0x00000006u, 0x0000015fu, 0x00000159u, 0x0000015eu, 0x0005008eu, 0x00000007u,
+    0x00000160u, 0x00000158u, 0x0000015fu, 0x0003003eu, 0x00000156u, 0x00000160u, 0x0004003du, 0x00000007u,
+    0x00000164u, 0x00000137u, 0x0004007fu, 0x00000007u, 0x00000165u, 0x00000164u, 0x00050041u, 0x00000008u,
+    0x00000166u, 0x00000028u, 0x00000072u, 0x0004003du, 0x00000007u, 0x00000167u, 0x00000166u, 0x0007000cu,
+    0x00000007u, 0x00000168u, 0x00000001u, 0x00000047u, 0x00000165u, 0x00000167u, 0x0004003du, 0x00000007u,
+    0x00000169u, 0x0000002au, 0x0004007fu, 0x00000007u, 0x0000016au, 0x00000169u, 0x00050094u, 0x00000006u,
+    0x0000016bu, 0x00000168u, 0x0000016au, 0x0007000cu, 0x00000006u, 0x0000016cu, 0x00000001u, 0x00000028u,
+    0x00000053u, 0x0000016bu, 0x0007000cu, 0x00000006u, 0x0000016eu, 0x00000001u, 0x0000001au, 0x0000016cu,
+    0x0000016du, 0x0005008eu, 0x00000007u, 0x0000016fu, 0x00000163u, 0x0000016eu, 0x0005008eu, 0x00000007u,
+    0x00000170u, 0x0000016fu, 0x0000010fu, 0x0004003du, 0x00000007u, 0x00000171u, 0x00000156u, 0x00050081u,
+    0x00000007u, 0x00000172u, 0x00000171u, 0x00000170u, 0x0003003eu, 0x00000156u, 0x00000172u, 0x0004003du,
+    0x00000007u, 0x00000173u, 0x00000156u, 0x000200feu, 0x00000173u, 0x00010038u, 0x00050036u, 0x00000007u,
+    0x00000031u, 0x00000000u, 0x0000002du, 0x00030037u, 0x00000008u, 0x0000002eu, 0x00030037u, 0x00000008u,
+    0x0000002fu, 0x00030037u, 0x00000014u, 0x00000030u, 0x000200f8u, 0x00000032u, 0x0004003bu, 0x00000026u,
+    0x00000176u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000178u, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x0000017au, 0x00000007u, 0x0004003bu, 0x00000014u, 0x0000017cu, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x00000183u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000187u, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x0000018eu, 0x00000007u, 0x0004003bu, 0x00000026u, 0x0000018fu, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x00000191u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x00000193u, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x0000019du, 0x00000007u, 0x0004003bu, 0x00000026u, 0x000001a2u, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x000001a8u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x000001a9u, 0x00000007u, 0x0004003bu, 0x00000014u,
+    0x000001abu, 0x00000007u, 0x0004003bu, 0x00000008u, 0x000001adu, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x000001b1u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x000001b4u, 0x00000007u, 0x0004003bu, 0x00000026u,
+    0x000001c2u, 0x00000007u, 0x0004003bu, 0x00000008u, 0x000001c4u, 0x00000007u, 0x0004003bu, 0x00000008u,
+    0x000001c5u, 0x00000007u, 0x0004003du, 0x00000007u, 0x00000179u, 0x0000002eu, 0x0003003eu, 0x00000178u,
+    0x00000179u, 0x0004003du, 0x00000007u, 0x0000017bu, 0x0000002fu, 0x0003003eu, 0x0000017au, 0x0000017bu,
+    0x0003003eu, 0x0000017cu, 0x00000177u, 0x00070039u, 0x00000015u, 0x0000017du, 0x0000001au, 0x00000178u,
+    0x0000017au, 0x0000017cu, 0x0003003eu, 0x00000176u, 0x0000017du, 0x00050041u, 0x0000000bu, 0x0000017eu,
+    0x00000176u, 0x0000006fu, 0x0004003du, 0x00000006u, 0x0000017fu, 0x0000017eu, 0x000500beu, 0x0000000cu,
+    0x00000180u, 0x0000017fu, 0x00000151u, 0x000300f7u, 0x00000182u, 0x00000000u, 0x000400fau, 0x00000180u,
+    0x00000181u, 0x00000182u, 0x000200f8u, 0x00000181u, 0x0004003du, 0x00000007u, 0x00000184u, 0x0000002fu,
+    0x0003003eu, 0x00000183u, 0x00000184u, 0x00050039u, 0x00000007u, 0x00000185u, 0x0000001eu, 0x00000183u,
+    0x000200feu, 0x00000185u, 0x000200f8u, 0x00000182u, 0x0004003du, 0x00000007u, 0x00000188u, 0x0000002eu,
+    0x0004003du, 0x00000007u, 0x00000189u, 0x0000002fu, 0x00050041u, 0x0000000bu, 0x0000018au, 0x00000176u,
+    0x0000006fu, 0x0004003du, 0x00000006u, 0x0000018bu, 0x0000018au, 0x0005008eu, 0x00000007u, 0x0000018cu,
+    0x00000189u, 0x0000018bu, 0x00050081u, 0x00000007u, 0x0000018du, 0x00000188u, 0x0000018cu, 0x0003003eu,
+    0x00000187u, 0x0000018du, 0x0004003du, 0x00000015u, 0x00000190u, 0x00000176u, 0x0003003eu, 0x0000018fu,
+    0x00000190u, 0x0004003du, 0x00000007u, 0x00000192u, 0x00000187u, 0x0003003eu, 0x00000191u, 0x00000192u,
+    0x0004003du, 0x00000007u, 0x00000194u, 0x0000002fu, 0x0003003eu, 0x00000193u, 0x00000194u, 0x00070039u,
+    0x00000007u, 0x00000195u, 0x0000002bu, 0x0000018fu, 0x00000191u, 0x00000193u, 0x0003003eu, 0x0000018eu,
+    0x00000195u, 0x00050041u, 0x0000000bu, 0x00000196u, 0x00000176u, 0x00000079u, 0x0004003du, 0x00000006u,
+    0x00000197u, 0x00000196u, 0x000500bau, 0x0000000cu, 0x00000198u, 0x00000197u, 0x00000107u, 0x0004003du,
+    0x0000000cu, 0x00000199u, 0x00000030u, 0x000500a7u, 0x0000000cu, 0x0000019au, 0x00000198u, 0x00000199u,
+    0x000300f7u, 0x0000019cu, 0x00000000u, 0x000400fau, 0x0000019au, 0x0000019bu, 0x0000019cu, 0x000200f8u,
+    0x0000019bu, 0x0004003du, 0x00000007u, 0x0000019eu, 0x0000002fu, 0x00050041u, 0x00000008u, 0x0000019fu,
+    0x00000176u, 0x00000072u, 0x0004003du, 0x00000007u, 0x000001a0u, 0x0000019fu, 0x0007000cu, 0x00000007u,
+    0x000001a1u, 0x00000001u, 0x00000047u, 0x0000019eu, 0x000001a0u, 0x0003003eu, 0x0000019du, 0x000001a1u,
+    0x0004003du, 0x00000007u, 0x000001a3u, 0x00000187u, 0x00050041u, 0x00000008u, 0x000001a4u, 0x00000176u,
+    0x00000072u, 0x0004003du, 0x00000007u, 0x000001a5u, 0x000001a4u, 0x0005008eu, 0x00000007u, 0x000001a6u,
+    0x000001a5u, 0x00000147u, 0x00050081u, 0x00000007u, 0x000001a7u, 0x000001a3u, 0x000001a6u, 0x0003003eu,
+    0x000001a8u, 0x000001a7u, 0x0004003du, 0x00000007u, 0x000001aau, 0x0000019du, 0x0003003eu, 0x000001a9u,
+    0x000001aau, 0x0003003eu, 0x000001abu, 0x00000057u, 0x00070039u, 0x00000015u, 0x000001acu, 0x0000001au,
+    0x000001a8u, 0x000001a9u, 0x000001abu, 0x0003003eu, 0x000001a2u, 0x000001acu, 0x00050041u, 0x0000000bu,
+    0x000001aeu, 0x000001a2u, 0x0000006fu, 0x0004003du, 0x00000006u, 0x000001afu, 0x000001aeu, 0x000500beu,
+    0x0000000cu, 0x000001b0u, 0x000001afu, 0x00000151u, 0x000300f7u, 0x000001b3u, 0x00000000u, 0x000400fau,
+    0x000001b0u, 0x000001b2u, 0x000001b7u, 0x000200f8u, 0x000001b2u, 0x0004003du, 0x00000007u, 0x000001b5u,
+    0x0000019du, 0x0003003eu, 0x000001b4u, 0x000001b5u, 0x00050039u, 0x00000007u, 0x000001b6u, 0x0000001eu,
+    0x000001b4u, 0x0003003eu, 0x000001b1u, 0x000001b6u, 0x000200f9u, 0x000001b3u, 0x000200f8u, 0x000001b7u,
+    0x0004003du, 0x00000007u, 0x000001b8u, 0x00000187u, 0x00050041u, 0x00000008u, 0x000001b9u, 0x00000176u,
+    0x00000072u, 0x0004003du, 0x00000007u, 0x000001bau, 0x000001b9u, 0x0005008eu, 0x00000007u, 0x000001bbu,
+    0x000001bau, 0x00000147u, 0x00050081u, 0x00000007u, 0x000001bcu, 0x000001b8u, 0x000001bbu, 0x0004003du,
+    0x00000007u, 0x000001bdu, 0x0000019du, 0x00050041u, 0x0000000bu, 0x000001beu, 0x000001a2u, 0x0000006fu,
+    0x0004003du, 0x00000006u, 0x000001bfu, 0x000001beu, 0x0005008eu, 0x00000007u, 0x000001c0u, 0x000001bdu,
+    0x000001bfu, 0x00050081u, 0x00000007u, 0x000001c1u, 0x000001bcu, 0x000001c0u, 0x0004003du, 0x00000015u,
+    0x000001c3u, 0x000001a2u, 0x0003003eu, 0x000001c2u, 0x000001c3u, 0x0003003eu, 0x000001c4u, 0x000001c1u,
+    0x0004003du, 0x00000007u, 0x000001c6u, 0x0000019du, 0x0003003eu, 0x000001c5u, 0x000001c6u, 0x00070039u,
+    0x00000007u, 0x000001c7u, 0x0000002bu, 0x000001c2u, 0x000001c4u, 0x000001c5u, 0x0003003eu, 0x000001b1u,
+    0x000001c7u, 0x000200f9u, 0x000001b3u, 0x000200f8u, 0x000001b3u, 0x0004003du, 0x00000007u, 0x000001c8u,
+    0x000001b1u, 0x0003003eu, 0x000001adu, 0x000001c8u, 0x0004003du, 0x00000007u, 0x000001c9u, 0x0000018eu,
+    0x0004003du, 0x00000007u, 0x000001cau, 0x000001adu, 0x00050041u, 0x00000008u, 0x000001cbu, 0x00000176u,
+    0x00000076u, 0x0004003du, 0x00000007u, 0x000001ccu, 0x000001cbu, 0x00050085u, 0x00000007u, 0x000001cdu,
+    0x000001cau, 0x000001ccu, 0x0005008eu, 0x00000007u, 0x000001cfu, 0x000001cdu, 0x000001ceu, 0x00060050u,
+    0x00000007u, 0x000001d1u, 0x000001d0u, 0x000001d0u, 0x000001d0u, 0x0008000cu, 0x00000007u, 0x000001d2u,
+    0x00000001u, 0x0000002eu, 0x000001c9u, 0x000001cfu, 0x000001d1u, 0x0003003eu, 0x0000018eu, 0x000001d2u,
+    0x000200f9u, 0x0000019cu, 0x000200f8u, 0x0000019cu, 0x0004003du, 0x00000007u, 0x000001d3u, 0x0000018eu,
+    0x000200feu, 0x000001d3u, 0x00010038u, 0x00050036u, 0x00000033u, 0x00000036u, 0x00000000u, 0x00000034u,
+    0x00030037u, 0x00000008u, 0x00000035u, 0x000200f8u, 0x00000037u, 0x0004003bu, 0x000001d7u, 0x000001d8u,
+    0x00000007u, 0x0004003du, 0x00000007u, 0x000001d9u, 0x00000035u, 0x0008000cu, 0x00000007u, 0x000001dbu,
+    0x00000001u, 0x0000002bu, 0x000001d9u, 0x00000077u, 0x000001dau, 0x0005008eu, 0x00000007u, 0x000001ddu,
+    0x000001dbu, 0x000001dcu, 0x00060050u, 0x00000007u, 0x000001deu, 0x00000107u, 0x00000107u, 0x00000107u,
+    0x00050081u, 0x00000007u, 0x000001dfu, 0x000001ddu, 0x000001deu, 0x0004006du, 0x000001d6u, 0x000001e0u,
+    0x000001dfu, 0x0003003eu, 0x000001d8u, 0x000001e0u, 0x00050041u, 0x0000007bu, 0x000001e1u, 0x000001d8u,
+    0x00000086u, 0x0004003du, 0x00000033u, 0x000001e2u, 0x000001e1u, 0x00050041u, 0x0000007bu, 0x000001e3u,
+    0x000001d8u, 0x000000bcu, 0x0004003du, 0x00000033u, 0x000001e4u, 0x000001e3u, 0x000500c4u, 0x00000033u,
+    0x000001e6u, 0x000001e4u, 0x000001e5u, 0x000500c5u, 0x00000033u, 0x000001e7u, 0x000001e2u, 0x000001e6u,
+    0x00050041u, 0x0000007bu, 0x000001e8u, 0x000001d8u, 0x00000095u, 0x0004003du, 0x00000033u, 0x000001e9u,
+    0x000001e8u, 0x000500c4u, 0x00000033u, 0x000001ebu, 0x000001e9u, 0x000001eau, 0x000500c5u, 0x00000033u,
+    0x000001ecu, 0x000001e7u, 0x000001ebu, 0x000500c5u, 0x00000033u, 0x000001eeu, 0x000001ecu, 0x000001edu,
+    0x000200feu, 0x000001eeu, 0x00010038u,
+};
+static const size_t rt_raytrace_comp_spirv_words = 3883;
+
+// ---- rt/raytrace.comp (Metal Shading Language 2.1, via SPIRV-Cross) ----
+static const char rt_raytrace_comp_msl[] =
+    "#pragma clang diagnostic ignored \"-Wmissing-prototypes\"\n"
+    "\n"
+    "#include <metal_stdlib>\n"
+    "#include <simd/simd.h>\n"
+    "\n"
+    "using namespace metal;\n"
+    "\n"
+    "// Implementation of the GLSL mod() function, which is slightly different than Metal fmod()\n"
+    "template<typename Tx, typename Ty>\n"
+    "inline Tx mod(Tx x, Ty y)\n"
+    "{\n"
+    "    return x - y * floor(x / y);\n"
+    "}\n"
+    "\n"
+    "struct Hit\n"
+    "{\n"
+    "    float t;\n"
+    "    float3 normal;\n"
+    "    float3 albedo;\n"
+    "    float metallic;\n"
+    "};\n"
+    "\n"
+    "struct RtParams\n"
+    "{\n"
+    "    float4 p0;\n"
+    "    float4 p1;\n"
+    "    float4 p2;\n"
+    "    float4 p3;\n"
+    "    float4 p4;\n"
+    "};\n"
+    "\n"
+    "struct SceneBuffer\n"
+    "{\n"
+    "    float4 scene[1];\n"
+    "};\n"
+    "\n"
+    "struct RtOutput\n"
+    "{\n"
+    "    uint pixels[1];\n"
+    "};\n"
+    "\n"
+    "constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(8u, 8u, 1u);\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "float hash12(thread const float2& p)\n"
+    "{\n"
+    "    float3 p3 = fract(float3(p.xyx) * 0.103100001811981201171875);\n"
+    "    p3 += float3(dot(p3, p3.yzx + float3(33.3300018310546875)));\n"
+    "    return fract((p3.x + p3.y) * p3.z);\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "bool intersectSphere(thread const float3& ro, thread const float3& rd, thread const float4& sphere, thread float& t)\n"
+    "{\n"
+    "    float3 oc = ro - sphere.xyz;\n"
+    "    float b = dot(oc, rd);\n"
+    "    float c = dot(oc, oc) - (sphere.w * sphere.w);\n"
+    "    float disc = (b * b) - c;\n"
+    "    if (disc < 0.0)\n"
+    "    {\n"
+    "        return false;\n"
+    "    }\n"
+    "    float s = sqrt(disc);\n"
+    "    t = (-b) - s;\n"
+    "    if (t < 0.001000000047497451305389404296875)\n"
+    "    {\n"
+    "        t = (-b) + s;\n"
+    "    }\n"
+    "    return t > 0.001000000047497451305389404296875;\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "Hit traceScene(thread const float3& ro, thread const float3& rd, thread const bool& primary, const device RtParams& rt_params, const device SceneBuffer& scene_data)\n"
+    "{\n"
+    "    Hit hit;\n"
+    "    hit.t = 1000000015047466219876688855040.0;\n"
+    "    hit.normal = float3(0.0, 1.0, 0.0);\n"
+    "    hit.albedo = float3(0.0);\n"
+    "    hit.metallic = 0.0;\n"
+    "    uint count = uint(((device float*)&rt_params.p4)[3u]);\n"
+    "    float param_3;\n"
+    "    for (uint i = 0u; i < count; i++)\n"
+    "    {\n"
+    "        float4 sphere = scene_data.scene[i * 2u];\n"
+    "        float3 param = ro;\n"
+    "        float3 param_1 = rd;\n"
+    "        float4 param_2 = sphere;\n"
+    "        bool _162 = intersectSphere(param, param_1, param_2, param_3);\n"
+    "        float t = param_3;\n"
+    "        bool _170;\n"
+    "        if (_162)\n"
+    "        {\n"
+    "            _170 = t < hit.t;\n"
+    "        }\n"
+    "        else\n"
+    "        {\n"
+    "            _170 = _162;\n"
+    "        }\n"
+    "        if (_170)\n"
+    "        {\n"
+    "            hit.t = t;\n"
+    "            hit.normal = fast::normalize((ro + (rd * t)) - sphere.xyz);\n"
+    "            float4 mat = scene_data.scene[(i * 2u) + 1u];\n"
+    "            hit.albedo = mat.xyz;\n"
+    "            hit.metallic = mat.w;\n"
+    "        }\n"
+    "    }\n"
+    "    if (abs(rd.y) > 9.9999997473787516355514526367188e-06)\n"
+    "    {\n"
+    "        float t_1 = (-ro.y) / rd.y;\n"
+    "        bool _215 = t_1 > 0.001000000047497451305389404296875;\n"
+    "        bool _222;\n"
+    "        if (_215)\n"
+    "        {\n"
+    "            _222 = t_1 < hit.t;\n"
+    "        }\n"
+    "        else\n"
+    "        {\n"
+    "            _222 = _215;\n"
+    "        }\n"
+    "        if (_222)\n"
+    "        {\n"
+    "            float3 p = ro + (rd * t_1);\n"
+    "            float checker = mod(floor(p.x) + floor(p.z), 2.0);\n"
+    "            hit.t = t_1;\n"
+    "            hit.normal = float3(0.0, 1.0, 0.0);\n"
+    "            hit.albedo = mix(float3(0.07999999821186065673828125, 0.0900000035762786865234375, 0.10999999940395355224609375), float3(0.2800000011920928955078125, 0.300000011920928955078125, 0.3400000035762786865234375), float3(checker));\n"
+    "            hit.metallic = 0.0;\n"
+    "        }\n"
+    "    }\n"
+    "    return hit;\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "float3 sky(thread const float3& rd)\n"
+    "{\n"
+    "    float t = fast::clamp((rd.y * 0.5) + 0.5, 0.0, 1.0);\n"
+    "    return mix(float3(0.02999999932944774627685546875, 0.039999999105930328369140625, 0.070000000298023223876953125), float3(0.25, 0.449999988079071044921875, 0.85000002384185791015625), float3(t));\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "float3 shadeDirect(thread const Hit& hit, thread const float3& p, thread const float3& rd, const device RtParams& rt_params, const device SceneBuffer& scene_data)\n"
+    "{\n"
+    "    float3 sun = float3(0.4580879509449005126953125, 0.814378559589385986328125, 0.3562906086444854736328125);\n"
+    "    float ndl = fast::max(dot(hit.normal, sun), 0.0);\n"
+    "    float shadow = 1.0;\n"
+    "    float3 param = p + (hit.normal * 0.00200000009499490261077880859375);\n"
+    "    float3 param_1 = sun;\n"
+    "    bool param_2 = false;\n"
+    "    Hit shadow_hit = traceScene(param, param_1, param_2, rt_params, scene_data);\n"
+    "    if (shadow_hit.t < 100000001504746621987668885504.0)\n"
+    "    {\n"
+    "        shadow = 0.1500000059604644775390625;\n"
+    "    }\n"
+    "    float3 color = hit.albedo * (0.180000007152557373046875 + ((0.819999992847442626953125 * ndl) * shadow));\n"
+    "    color += ((float3(0.3499999940395355224609375, 0.449999988079071044921875, 0.60000002384185791015625) * pow(fast::max(0.0, dot(reflect(-sun, hit.normal), -rd)), 32.0)) * 0.25);\n"
+    "    return color;\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "float3 shade(thread const float3& ro, thread const float3& rd, thread const bool& allow_reflection, const device RtParams& rt_params, const device SceneBuffer& scene_data)\n"
+    "{\n"
+    "    float3 param = ro;\n"
+    "    float3 param_1 = rd;\n"
+    "    bool param_2 = true;\n"
+    "    Hit hit = traceScene(param, param_1, param_2, rt_params, scene_data);\n"
+    "    if (hit.t >= 100000001504746621987668885504.0)\n"
+    "    {\n"
+    "        float3 param_3 = rd;\n"
+    "        return sky(param_3);\n"
+    "    }\n"
+    "    float3 p = ro + (rd * hit.t);\n"
+    "    Hit param_4 = hit;\n"
+    "    float3 param_5 = p;\n"
+    "    float3 param_6 = rd;\n"
+    "    float3 color = shadeDirect(param_4, param_5, param_6, rt_params, scene_data);\n"
+    "    if ((hit.metallic > 0.5) && allow_reflection)\n"
+    "    {\n"
+    "        float3 r = reflect(rd, hit.normal);\n"
+    "        float3 param_7 = p + (hit.normal * 0.00200000009499490261077880859375);\n"
+    "        float3 param_8 = r;\n"
+    "        bool param_9 = false;\n"
+    "        Hit reflected_hit = traceScene(param_7, param_8, param_9, rt_params, scene_data);\n"
+    "        float3 _433;\n"
+    "        if (reflected_hit.t >= 100000001504746621987668885504.0)\n"
+    "        {\n"
+    "            float3 param_10 = r;\n"
+    "            _433 = sky(param_10);\n"
+    "        }\n"
+    "        else\n"
+    "        {\n"
+    "            Hit param_11 = reflected_hit;\n"
+    "            float3 param_12 = (p + (hit.normal * 0.00200000009499490261077880859375)) + (r * reflected_hit.t);\n"
+    "            float3 param_13 = r;\n"
+    "            _433 = shadeDirect(param_11, param_12, param_13, rt_params, scene_data);\n"
+    "        }\n"
+    "        float3 reflected = _433;\n"
+    "        color = mix(color, (reflected * hit.albedo) * 1.39999997615814208984375, float3(0.64999997615814208984375));\n"
+    "    }\n"
+    "    return color;\n"
+    "}\n"
+    "\n"
+    "static inline __attribute__((always_inline))\n"
+    "uint packRGBA(thread const float3& color)\n"
+    "{\n"
+    "    uint3 c = uint3((fast::clamp(color, float3(0.0), float3(1.0)) * 255.0) + float3(0.5));\n"
+    "    return ((c.x | (c.y << uint(8))) | (c.z << uint(16))) | 4278190080u;\n"
+    "}\n"
+    "\n"
+    "kernel void main0(const device SceneBuffer& scene_data [[buffer(0)]], const device RtParams& rt_params [[buffer(1)]], device RtOutput& output_image [[buffer(2)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])\n"
+    "{\n"
+    "    uint width = uint(((device float*)&rt_params.p0)[0u]);\n"
+    "    uint height = uint(((device float*)&rt_params.p0)[1u]);\n"
+    "    uint samples = max(1u, uint(((device float*)&rt_params.p0)[2u]));\n"
+    "    uint x = gl_GlobalInvocationID.x;\n"
+    "    uint y = gl_GlobalInvocationID.y;\n"
+    "    if ((x >= width) || (y >= height))\n"
+    "    {\n"
+    "        return;\n"
+    "    }\n"
+    "    float3 origin = rt_params.p1.xyz;\n"
+    "    float tan_half_fov = ((device float*)&rt_params.p1)[3u];\n"
+    "    float3 right = rt_params.p2.xyz;\n"
+    "    float aspect = ((device float*)&rt_params.p2)[3u];\n"
+    "    float3 up = rt_params.p3.xyz;\n"
+    "    float3 forward = rt_params.p4.xyz;\n"
+    "    float3 sum = float3(0.0);\n"
+    "    for (uint s = 0u; s < samples; s++)\n"
+    "    {\n"
+    "        float2 param = float2(float(x), float(y)) + float2(float(s) * 17.0);\n"
+    "        float2 param_1 = float2(float(y), float(x)) + float2(float(s) * 29.0);\n"
+    "        float2 jitter = float2(hash12(param), hash12(param_1)) - float2(0.5);\n"
+    "        float2 uv = ((((float2(float(x), float(y)) + float2(0.5)) + jitter) / float2(float(width), float(height))) * 2.0) - float2(1.0);\n"
+    "        uv.y = -uv.y;\n"
+    "        float3 dir = fast::normalize((forward + (right * ((uv.x * tan_half_fov) * aspect))) + (up * (uv.y * tan_half_fov)));\n"
+    "        float3 param_2 = origin;\n"
+    "        float3 param_3 = dir;\n"
+    "        bool param_4 = true;\n"
+    "        sum += shade(param_2, param_3, param_4, rt_params, scene_data);\n"
+    "    }\n"
+    "    float3 param_5 = sum / float3(float(samples));\n"
+    "    output_image.pixels[(y * width) + x] = packRGBA(param_5);\n"
+    "}\n"
+    "\n"
+    "";
+static const size_t rt_raytrace_comp_msl_size = 8405;
 
 // ---- scene/debug_line.frag (OpenGL 4.10 variant) ----
 static const char scene_debug_line_frag_glsl[] =
@@ -4731,6 +6339,9 @@ static const char scene_debug_line_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -4739,6 +6350,9 @@ static const char scene_debug_line_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -4747,6 +6361,11 @@ static const char scene_debug_line_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -4841,7 +6460,7 @@ static const char scene_debug_line_frag_glsl[] =
     "    out_color = v_color;\n"
     "}\n"
     "";
-static const size_t scene_debug_line_frag_glsl_size = 7951;
+static const size_t scene_debug_line_frag_glsl_size = 9120;
 
 // ---- scene/debug_line.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_debug_line_frag_spirv[] = {
@@ -4955,6 +6574,9 @@ static const char scene_debug_line_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -4963,6 +6585,9 @@ static const char scene_debug_line_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -4971,6 +6596,11 @@ static const char scene_debug_line_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -5076,7 +6706,7 @@ static const char scene_debug_line_vert_glsl[] =
     "    gl_Position = u_pc_mvp * vec4(a_position, 1.0);\n"
     "}\n"
     "";
-static const size_t scene_debug_line_vert_glsl_size = 8469;
+static const size_t scene_debug_line_vert_glsl_size = 9638;
 
 // ---- scene/debug_line.vert (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_debug_line_vert_spirv[] = {
@@ -5256,6 +6886,9 @@ static const char scene_pbr_mesh_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -5264,6 +6897,9 @@ static const char scene_pbr_mesh_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -5272,6 +6908,11 @@ static const char scene_pbr_mesh_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -5872,7 +7513,7 @@ static const char scene_pbr_mesh_frag_glsl[] =
     "    out_color = vec4(max(color, vec3(0.0)), alpha);\n"
     "}\n"
     "";
-static const size_t scene_pbr_mesh_frag_glsl_size = 28408;
+static const size_t scene_pbr_mesh_frag_glsl_size = 29577;
 
 // ---- scene/pbr_mesh.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_pbr_mesh_frag_spirv[] = {
@@ -6974,7 +8615,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "        return 1.0;\n"
     "    }\n"
     "    float d = fast::max(_distance, 9.9999997473787516355514526367188e-05);\n"
-    "    float param = 1.0 - powr(d / range, 4.0);\n"
+    "    float param = 1.0 - pow(d / range, 4.0);\n"
     "    float window = gsSaturate(param);\n"
     "    return (window * window) / (d * d);\n"
     "}\n"
@@ -6998,7 +8639,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "    float a = fast::max(roughness * roughness, 9.9999997473787516355514526367188e-05);\n"
     "    float shininess = fast::max((2.0 / (a * a)) - 2.0, 1.0);\n"
     "    float norm = (shininess + 2.0) / 6.283185482025146484375;\n"
-    "    return norm * powr(fast::max(NoH, 0.0), shininess);\n"
+    "    return norm * pow(fast::max(NoH, 0.0), shininess);\n"
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
@@ -7044,7 +8685,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "static inline __attribute__((always_inline))\n"
     "float3 gsFresnelSchlick(thread const float& cosTheta, thread const float3& F0)\n"
     "{\n"
-    "    float f = powr(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+    "    float f = pow(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
     "    return F0 + ((float3(1.0) - F0) * f);\n"
     "}\n"
     "\n"
@@ -7080,14 +8721,14 @@ static const char scene_pbr_mesh_frag_msl[] =
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
-    "float3 gsProceduralSky(thread const float3& dir, constant Environment& _573)\n"
+    "float3 gsProceduralSky(thread const float3& dir, constant Environment& v_573)\n"
     "{\n"
     "    float param = (dir.y * 0.5) + 0.5;\n"
     "    float t = gsSaturate(param);\n"
-    "    float3 sky = mix(_573.u_ground_tint.xyz, _573.u_sky_tint.xyz, float3(t));\n"
+    "    float3 sky = mix(v_573.u_ground_tint.xyz, v_573.u_sky_tint.xyz, float3(t));\n"
     "    float param_1 = dot(fast::normalize(dir), float3(0.51214754581451416015625, 0.76822125911712646484375, 0.384110629558563232421875));\n"
-    "    float sun = powr(gsSaturate(param_1), 256.0);\n"
-    "    return (sky * _573.u_env_params.x) + float3(sun * 8.0);\n"
+    "    float sun = pow(gsSaturate(param_1), 256.0);\n"
+    "    return (sky * v_573.u_env_params.x) + float3(sun * 8.0);\n"
     "}\n"
     "\n"
     "static inline __attribute__((always_inline))\n"
@@ -7110,7 +8751,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "float3 gsFresnelSchlickRough(thread const float& cosTheta, thread const float3& F0, thread const float& roughness)\n"
     "{\n"
     "    float3 one = fast::max(float3(1.0 - roughness), F0);\n"
-    "    float f = powr(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
+    "    float f = pow(fast::clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);\n"
     "    return F0 + ((one - F0) * f);\n"
     "}\n"
     "\n"
@@ -7129,7 +8770,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "    return (diffuse + specular) * s.ao;\n"
     "}\n"
     "\n"
-    "fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buffer(0)]], constant Lights& _855 [[buffer(1)]], constant Environment& _573 [[buffer(2)]], constant Material& _610 [[buffer(8)]], texturecube<float> u_irradiance_map [[texture(3)]], texturecube<float> u_prefilter_map [[texture(4)]], texture2d<float> u_brdf_lut [[texture(5)]], texture2d<float> u_base_color [[texture(9)]], texture2d<float> u_metallic_roughness [[texture(10)]], texture2d<float> u_normal [[texture(11)]], texture2d<float> u_occlusion [[texture(12)]], texture2d<float> u_emissive [[texture(13)]], sampler u_irradiance_mapSmplr [[sampler(3)]], sampler u_prefilter_mapSmplr [[sampler(4)]], sampler u_brdf_lutSmplr [[sampler(5)]], sampler u_base_colorSmplr [[sampler(9)]], sampler u_metallic_roughnessSmplr [[sampler(10)]], sampler u_normalSmplr [[sampler(11)]], sampler u_occlusionSmplr [[sampler(12)]], sampler u_emissiveSmplr [[sampler(13)]])\n"
+    "fragment main0_out main0(main0_in in [[stage_in]], constant PerFrame& _783 [[buffer(0)]], constant Lights& _855 [[buffer(1)]], constant Environment& v_573 [[buffer(2)]], constant Material& _610 [[buffer(8)]], texturecube<float> u_irradiance_map [[texture(3)]], texturecube<float> u_prefilter_map [[texture(4)]], texture2d<float> u_brdf_lut [[texture(5)]], texture2d<float> u_base_color [[texture(9)]], texture2d<float> u_metallic_roughness [[texture(10)]], texture2d<float> u_normal [[texture(11)]], texture2d<float> u_occlusion [[texture(12)]], texture2d<float> u_emissive [[texture(13)]], sampler u_irradiance_mapSmplr [[sampler(3)]], sampler u_prefilter_mapSmplr [[sampler(4)]], sampler u_brdf_lutSmplr [[sampler(5)]], sampler u_base_colorSmplr [[sampler(9)]], sampler u_metallic_roughnessSmplr [[sampler(10)]], sampler u_normalSmplr [[sampler(11)]], sampler u_occlusionSmplr [[sampler(12)]], sampler u_emissiveSmplr [[sampler(13)]])\n"
     "{\n"
     "    main0_out out = {};\n"
     "    float4 base_color = _610.u_base_color_factor;\n"
@@ -7336,15 +8977,15 @@ static const char scene_pbr_mesh_frag_msl[] =
     "    color += (((_855.u_ambient_color.xyz * _855.u_ambient_color.w) * surface.albedo) * surface.ao);\n"
     "    float3 R = reflect(-V, N);\n"
     "    float NoV = fast::max(dot(N, V), 9.9999997473787516355514526367188e-06);\n"
-    "    if (_573.u_ibl_params.x > 0.5)\n"
+    "    if (v_573.u_ibl_params.x > 0.5)\n"
     "    {\n"
     "        float3 irradiance;\n"
     "        float3 prefiltered;\n"
     "        float2 brdf;\n"
-    "        if (_573.u_ibl_params.z > 1.5)\n"
+    "        if (v_573.u_ibl_params.z > 1.5)\n"
     "        {\n"
     "            irradiance = u_irradiance_map.sample(u_irradiance_mapSmplr, N).xyz;\n"
-    "            float mip_levels = fast::max(_573.u_ibl_params.y, 1.0);\n"
+    "            float mip_levels = fast::max(v_573.u_ibl_params.y, 1.0);\n"
     "            float lod = surface.roughness * (mip_levels - 1.0);\n"
     "            prefiltered = u_prefilter_map.sample(u_prefilter_mapSmplr, R, level(lod)).xyz;\n"
     "            brdf = u_brdf_lut.sample(u_brdf_lutSmplr, float2(NoV, surface.roughness)).xy;\n"
@@ -7352,9 +8993,9 @@ static const char scene_pbr_mesh_frag_msl[] =
     "        else\n"
     "        {\n"
     "            float3 param_17 = N;\n"
-    "            irradiance = gsProceduralSky(param_17, _573);\n"
+    "            irradiance = gsProceduralSky(param_17, v_573);\n"
     "            float3 param_18 = R;\n"
-    "            prefiltered = gsProceduralSky(param_18, _573);\n"
+    "            prefiltered = gsProceduralSky(param_18, v_573);\n"
     "            float param_19 = NoV;\n"
     "            float param_20 = surface.roughness;\n"
     "            brdf = gsEnvBRDFApprox(param_19, param_20);\n"
@@ -7363,7 +9004,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "        float3 param_22 = irradiance;\n"
     "        float3 param_23 = prefiltered;\n"
     "        float2 param_24 = brdf;\n"
-    "        color += (gsEvaluateIBL(param_21, param_22, param_23, param_24) * _573.u_env_params.x);\n"
+    "        color += (gsEvaluateIBL(param_21, param_22, param_23, param_24) * v_573.u_env_params.x);\n"
     "    }\n"
     "    color += surface.emissive;\n"
     "    out.out_color = float4(fast::max(color, float3(0.0)), alpha);\n"
@@ -7371,7 +9012,7 @@ static const char scene_pbr_mesh_frag_msl[] =
     "}\n"
     "\n"
     "";
-static const size_t scene_pbr_mesh_frag_msl_size = 19094;
+static const size_t scene_pbr_mesh_frag_msl_size = 19100;
 
 // ---- scene/pbr_mesh.vert (OpenGL 4.10 variant) ----
 static const char scene_pbr_mesh_vert_glsl[] =
@@ -7437,6 +9078,9 @@ static const char scene_pbr_mesh_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -7445,6 +9089,9 @@ static const char scene_pbr_mesh_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -7453,6 +9100,11 @@ static const char scene_pbr_mesh_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -7663,7 +9315,7 @@ static const char scene_pbr_mesh_vert_glsl[] =
     "    gl_Position = u_view_projection * world_position;\n"
     "}\n"
     "";
-static const size_t scene_pbr_mesh_vert_glsl_size = 12757;
+static const size_t scene_pbr_mesh_vert_glsl_size = 13926;
 
 // ---- scene/pbr_mesh.vert (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_pbr_mesh_vert_spirv[] = {
@@ -8015,6 +9667,9 @@ static const char scene_skybox_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -8023,6 +9678,9 @@ static const char scene_skybox_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -8031,6 +9689,11 @@ static const char scene_skybox_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -8490,7 +10153,7 @@ static const char scene_skybox_frag_glsl[] =
     "    gl_FragDepth = 1.0;\n"
     "}\n"
     "";
-static const size_t scene_skybox_frag_glsl_size = 22881;
+static const size_t scene_skybox_frag_glsl_size = 24050;
 
 // ---- scene/skybox.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t scene_skybox_frag_spirv[] = {
@@ -8865,9 +10528,9 @@ static const char scene_skybox_frag_msl[] =
     "            color = mix(_109.u_ground_tint.xyz, _109.u_sky_tint.xyz, float3(t));\n"
     "            float3 sun_dir = float3(0.51214754581451416015625, 0.76822125911712646484375, 0.384110629558563232421875);\n"
     "            float param_2 = dot(rotated, sun_dir);\n"
-    "            float sun = powr(gsSaturate(param_2), 512.0);\n"
+    "            float sun = pow(gsSaturate(param_2), 512.0);\n"
     "            float param_3 = dot(rotated, sun_dir);\n"
-    "            float glow = powr(gsSaturate(param_3), 8.0);\n"
+    "            float glow = pow(gsSaturate(param_3), 8.0);\n"
     "            color += (((float3(1.0, 0.89999997615814208984375, 0.699999988079071044921875) * sun) * 60.0) + ((float3(0.4000000059604644775390625, 0.3499999940395355224609375, 0.300000011920928955078125) * glow) * 0.5));\n"
     "        }\n"
     "    }\n"
@@ -8877,7 +10540,7 @@ static const char scene_skybox_frag_msl[] =
     "}\n"
     "\n"
     "";
-static const size_t scene_skybox_frag_msl_size = 3763;
+static const size_t scene_skybox_frag_msl_size = 3761;
 
 // ---- ui/batch.frag (OpenGL 4.10 variant) ----
 static const char ui_batch_frag_glsl[] =
@@ -8950,6 +10613,9 @@ static const char ui_batch_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -8958,6 +10624,9 @@ static const char ui_batch_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -8966,6 +10635,11 @@ static const char ui_batch_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -9093,7 +10767,7 @@ static const char ui_batch_frag_glsl[] =
     "    }\n"
     "}\n"
     "";
-static const size_t ui_batch_frag_glsl_size = 9283;
+static const size_t ui_batch_frag_glsl_size = 10452;
 
 // ---- ui/batch.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ui_batch_frag_spirv[] = {
@@ -9319,6 +10993,9 @@ static const char ui_batch_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -9327,6 +11004,9 @@ static const char ui_batch_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -9335,6 +11015,11 @@ static const char ui_batch_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -9447,7 +11132,7 @@ static const char ui_batch_vert_glsl[] =
     "    gl_Position = u_batch_view_proj * vec4(a_position, 1.0);\n"
     "}\n"
     "";
-static const size_t ui_batch_vert_glsl_size = 8620;
+static const size_t ui_batch_vert_glsl_size = 9789;
 
 // ---- ui/batch.vert (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ui_batch_vert_spirv[] = {
@@ -9620,6 +11305,9 @@ static const char ui_imgui_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -9628,6 +11316,9 @@ static const char ui_imgui_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -9636,6 +11327,11 @@ static const char ui_imgui_frag_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -9734,7 +11430,7 @@ static const char ui_imgui_frag_glsl[] =
     "    out_color = v_color * texture(u_ui_texture, v_uv);\n"
     "}\n"
     "";
-static const size_t ui_imgui_frag_glsl_size = 8035;
+static const size_t ui_imgui_frag_glsl_size = 9204;
 
 // ---- ui/imgui.frag (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ui_imgui_frag_spirv[] = {
@@ -9854,6 +11550,9 @@ static const char ui_imgui_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#elif defined(GENESIS_VK)\n"
@@ -9862,6 +11561,9 @@ static const char ui_imgui_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(push_constant) uniform gs_block\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#else\n"
@@ -9870,6 +11572,11 @@ static const char ui_imgui_vert_glsl[] =
     "#define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name\n"
     "#define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name\n"
     "#define GS_PUSH(gs_block) layout(std140) uniform gs_block\n"
+    "// GLSL 4.30 wants an integer literal for the binding qualifier; the GL\n"
+    "// backend maps the named blocks at pipeline build time instead.\n"
+    "#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block\n"
+    "#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block\n"
+    "#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block\n"
     "#define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name\n"
     "#define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name\n"
     "#endif\n"
@@ -9975,7 +11682,7 @@ static const char ui_imgui_vert_glsl[] =
     "    gl_Position = vec4(a_position * u_pc_scale_translate.xy + u_pc_scale_translate.zw, 0.0, 1.0);\n"
     "}\n"
     "";
-static const size_t ui_imgui_vert_glsl_size = 8271;
+static const size_t ui_imgui_vert_glsl_size = 9440;
 
 // ---- ui/imgui.vert (SPIR-V, Vulkan 1.1) ----
 static const uint32_t ui_imgui_vert_spirv[] = {
@@ -10068,12 +11775,14 @@ static const char ui_imgui_vert_msl[] =
 static const size_t ui_imgui_vert_msl_size = 779;
 
 static const ShaderBinary k_shaders[] = {
+    ShaderBinary{"anim/vertex_anim.comp", anim_vertex_anim_comp_glsl, anim_vertex_anim_comp_glsl_size, anim_vertex_anim_comp_spirv, anim_vertex_anim_comp_spirv_words, anim_vertex_anim_comp_msl, anim_vertex_anim_comp_msl_size},
     ShaderBinary{"common/fullscreen.vert", common_fullscreen_vert_glsl, common_fullscreen_vert_glsl_size, common_fullscreen_vert_spirv, common_fullscreen_vert_spirv_words, common_fullscreen_vert_msl, common_fullscreen_vert_msl_size},
     ShaderBinary{"ibl/brdf_lut.frag", ibl_brdf_lut_frag_glsl, ibl_brdf_lut_frag_glsl_size, ibl_brdf_lut_frag_spirv, ibl_brdf_lut_frag_spirv_words, ibl_brdf_lut_frag_msl, ibl_brdf_lut_frag_msl_size},
     ShaderBinary{"ibl/equirect_to_cube.frag", ibl_equirect_to_cube_frag_glsl, ibl_equirect_to_cube_frag_glsl_size, ibl_equirect_to_cube_frag_spirv, ibl_equirect_to_cube_frag_spirv_words, ibl_equirect_to_cube_frag_msl, ibl_equirect_to_cube_frag_msl_size},
     ShaderBinary{"ibl/irradiance.frag", ibl_irradiance_frag_glsl, ibl_irradiance_frag_glsl_size, ibl_irradiance_frag_spirv, ibl_irradiance_frag_spirv_words, ibl_irradiance_frag_msl, ibl_irradiance_frag_msl_size},
     ShaderBinary{"ibl/prefilter.frag", ibl_prefilter_frag_glsl, ibl_prefilter_frag_glsl_size, ibl_prefilter_frag_spirv, ibl_prefilter_frag_spirv_words, ibl_prefilter_frag_msl, ibl_prefilter_frag_msl_size},
     ShaderBinary{"post/effects.frag", post_effects_frag_glsl, post_effects_frag_glsl_size, post_effects_frag_spirv, post_effects_frag_spirv_words, post_effects_frag_msl, post_effects_frag_msl_size},
+    ShaderBinary{"rt/raytrace.comp", rt_raytrace_comp_glsl, rt_raytrace_comp_glsl_size, rt_raytrace_comp_spirv, rt_raytrace_comp_spirv_words, rt_raytrace_comp_msl, rt_raytrace_comp_msl_size},
     ShaderBinary{"scene/debug_line.frag", scene_debug_line_frag_glsl, scene_debug_line_frag_glsl_size, scene_debug_line_frag_spirv, scene_debug_line_frag_spirv_words, scene_debug_line_frag_msl, scene_debug_line_frag_msl_size},
     ShaderBinary{"scene/debug_line.vert", scene_debug_line_vert_glsl, scene_debug_line_vert_glsl_size, scene_debug_line_vert_spirv, scene_debug_line_vert_spirv_words, scene_debug_line_vert_msl, scene_debug_line_vert_msl_size},
     ShaderBinary{"scene/pbr_mesh.frag", scene_pbr_mesh_frag_glsl, scene_pbr_mesh_frag_glsl_size, scene_pbr_mesh_frag_spirv, scene_pbr_mesh_frag_spirv_words, scene_pbr_mesh_frag_msl, scene_pbr_mesh_frag_msl_size},

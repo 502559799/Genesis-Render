@@ -1,0 +1,11 @@
+{
+  "name": "Gold",
+  "base_color": [
+    1.0,
+    0.76,
+    0.33,
+    1.0
+  ],
+  "metallic": 1.0,
+  "roughness": 0.2
+}

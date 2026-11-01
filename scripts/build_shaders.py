@@ -97,6 +97,9 @@ def build_variant(source_path, shader_dir, dialect):
         header = "#version 450\n#define GENESIS_VK 1\n"
     elif dialect == "msl":
         header = "#version 450\n#define GENESIS_MSL 1\n"
+    elif source_path.endswith(".comp"):
+        # Compute shaders need GL 4.3 (SSBO + glDispatchCompute).
+        header = "#version 430\n#define GENESIS_GLSL 1\n"
     else:
         header = "#version 410\n#define GENESIS_GLSL 1\n"
     if EXTRA_DEFINES:

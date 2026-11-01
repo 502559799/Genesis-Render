@@ -1,0 +1,11 @@
+{
+  "name": "Brass",
+  "base_color": [
+    0.95,
+    0.68,
+    0.24,
+    1.0
+  ],
+  "metallic": 1.0,
+  "roughness": 0.28
+}

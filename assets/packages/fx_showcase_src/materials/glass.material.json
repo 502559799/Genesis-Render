@@ -1,0 +1,14 @@
+{
+  "name": "Glass",
+  "base_color": [
+    0.55,
+    0.82,
+    1.0,
+    0.35
+  ],
+  "metallic": 0.0,
+  "roughness": 0.15,
+  "blend": "transparent",
+  "double_sided": true,
+  "depth_write": false
+}

@@ -9,6 +9,7 @@
 #  ./build.sh --no-gl             skip the OpenGL backend
 #  ./build.sh --no-vulkan         skip the Vulkan backend
 #  ./build.sh --no-metal          skip the Metal backend (macOS)
+#  ./build.sh --no-js             build without V8 (Lua scripting only)
 #  ./build.sh --shaders           regenerate GLSL / SPIR-V / MSL first
 #                                 (needs glslangValidator and spirv-cross)
 #  ./build.sh --test              build, then run the whole test suite on
@@ -20,6 +21,7 @@
 #
 #  Dependencies
 #    Linux : build-essential cmake(>=3.16) libsdl2-dev zlib1g-dev
+#            no dev packages? run scripts/fetch_deps.sh (SDL2/Vulkan headers + V8)
 #            optional: libvulkan-dev mesa-vulkan-drivers xvfb
 #            shader regeneration: glslang-tools spirv-cross
 #    macOS : xcode-select --install; brew install cmake sdl2
@@ -34,6 +36,7 @@ BUILD_TYPE=Release
 BACKEND_GL=ON
 BACKEND_VK=ON
 BACKEND_MTL=ON
+ENABLE_JS=ON
 REBUILD_SHADERS=OFF
 RUN_TESTS=OFF
 RUN_DEMO=OFF
@@ -49,6 +52,7 @@ while [[ $# -gt 0 ]]; do
         --no-gl)      BACKEND_GL=OFF; shift ;;
         --no-vulkan)  BACKEND_VK=OFF; shift ;;
         --no-metal)   BACKEND_MTL=OFF; shift ;;
+        --no-js)      ENABLE_JS=OFF; shift ;;
         --shaders)    REBUILD_SHADERS=ON; shift ;;
         --test)       RUN_TESTS=ON; shift ;;
         --validation) VALIDATION=ON; shift ;;
@@ -69,6 +73,9 @@ BUILD_DIR="build"
 echo "==> Genesis Render: ${BUILD_TYPE} build (OpenGL=${BACKEND_GL} Vulkan=${BACKEND_VK} Metal=${BACKEND_MTL}) in ${BUILD_DIR}"
 
 # --- optional shader regeneration -------------------------------------------
+if [[ -d "$(dirname "$0")/../deps/tools" ]]; then
+    export PATH="$(cd "$(dirname "$0")/../deps/tools" && pwd):$PATH"
+fi
 if [[ "$REBUILD_SHADERS" == "ON" ]]; then
     if command -v python3 >/dev/null 2>&1; then
         echo "==> regenerating shaders (GLSL 410 / SPIR-V / MSL)"
@@ -86,7 +93,12 @@ CMAKE_ARGS=(
     -DGENESIS_BACKEND_VULKAN="$BACKEND_VK"
     -DGENESIS_BACKEND_METAL="$BACKEND_MTL"
     -DGENESIS_REBUILD_SHADERS=OFF
+    -DGENESIS_ENABLE_JS="$ENABLE_JS"
 )
+DEPS_ROOT="$(cd "$(dirname "$0")/.." && pwd)/deps/prefix"
+if [[ -d "$DEPS_ROOT" ]]; then
+    CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$DEPS_ROOT" -DGENESIS_V8_ROOT="$DEPS_ROOT")
+fi
 if command -v ninja >/dev/null 2>&1 && [[ -z "${GENESIS_NO_NINJA:-}" ]]; then
     CMAKE_ARGS+=(-G Ninja)
 fi
@@ -99,6 +111,14 @@ echo "==> build complete:"
 ls -1 "$BUILD_DIR/bin" 2>/dev/null || true
 
 # --- validation environment ----------------------------------------------------
+# Software Vulkan driver (scripts/fetch_lavapipe.sh) lets CI containers run
+# the Vulkan backend even when the image has no ICD installed.
+LAVAPIPE_ICD="$(cd "$(dirname "$0")/.." && pwd)/deps/vulkan_icd/lvp_icd.json"
+if [[ -z "${VK_ICD_FILENAMES:-}" && -f "$LAVAPIPE_ICD" ]]; then
+    export VK_ICD_FILENAMES="$LAVAPIPE_ICD"
+    export VK_DRIVER_FILES="$LAVAPIPE_ICD"
+fi
+
 if [[ "$VALIDATION" == "ON" ]]; then
     export GENESIS_VALIDATION=1 GENESIS_GL_VALIDATE=1
     # LunarG SDK layers are not on the loader path by default on macOS.

@@ -54,6 +54,9 @@
 #define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform samplerCube gs_name
 #define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding)) uniform sampler2DArray gs_name
 #define GS_PUSH(gs_block) layout(set = 0, binding = 24, std140) uniform gs_block
+#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) buffer gs_block
+#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) readonly buffer gs_block
+#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = 0, binding = GS_MSL_SLOT(gs_set, gs_binding), std430) writeonly buffer gs_block
 #define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name
 #define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name
 #elif defined(GENESIS_VK)
@@ -62,6 +65,9 @@
 #define GS_TEXCUBE(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform samplerCube gs_name
 #define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) layout(set = gs_set, binding = gs_binding) uniform sampler2DArray gs_name
 #define GS_PUSH(gs_block) layout(push_constant) uniform gs_block
+#define GS_SSBO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) buffer gs_block
+#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) readonly buffer gs_block
+#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(set = gs_set, binding = gs_binding, std430) writeonly buffer gs_block
 #define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name
 #define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name
 #else
@@ -70,6 +76,11 @@
 #define GS_TEXCUBE(gs_set, gs_binding, gs_name) uniform samplerCube gs_name
 #define GS_TEX2D_ARRAY(gs_set, gs_binding, gs_name) uniform sampler2DArray gs_name
 #define GS_PUSH(gs_block) layout(std140) uniform gs_block
+// GLSL 4.30 wants an integer literal for the binding qualifier; the GL
+// backend maps the named blocks at pipeline build time instead.
+#define GS_SSBO(gs_set, gs_binding, gs_block) layout(std430) buffer gs_block
+#define GS_SSBO_RO(gs_set, gs_binding, gs_block) layout(std430) readonly buffer gs_block
+#define GS_SSBO_WO(gs_set, gs_binding, gs_block) layout(std430) writeonly buffer gs_block
 #define GS_IN(gs_loc, gs_type, gs_name) layout(location = gs_loc) in gs_type gs_name
 #define GS_OUT(gs_loc, gs_type, gs_name) layout(location = gs_loc) out gs_type gs_name
 #endif

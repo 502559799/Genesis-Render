@@ -313,6 +313,8 @@ namespace Genesis
         {
         public:
             id<MTLRenderPipelineState> state = nil;
+            id<MTLComputePipelineState> compute_state = nil;
+            bool compute_ = false;
             id<MTLDepthStencilState> depth_state = nil;
             PipelineDesc desc_;
             MTLPrimitiveType primitive = MTLPrimitiveTypeTriangle;
@@ -323,7 +325,7 @@ namespace Genesis
             uint32_t stencil_reference = 0;
 
             const std::string &name() const override { return desc_.name; }
-            bool isCompute() const override { return false; }
+            bool isCompute() const override { return compute_; }
             const ResourceLayoutDesc &resourceLayout() const override { return desc_.resource_layout; }
             void *nativeHandle() const override { return (__bridge void *)state; }
         };
@@ -411,6 +413,8 @@ namespace Genesis
             id<MTLCommandBuffer> cb = nil;
             id<MTLRenderCommandEncoder> render = nil;
             id<MTLBlitCommandEncoder> blit = nil;
+            id<MTLComputeCommandEncoder> compute = nil;
+            bool compute_bound = false;
             bool frame_buffer = false; // owned by the device frame loop
 
             MTLPipelineRHI *pipeline = nullptr;
@@ -435,10 +439,7 @@ namespace Genesis
             void draw(uint32_t vertex_count, uint32_t first_vertex, uint32_t instance_count, uint32_t first_instance) override;
             void drawIndexed(uint32_t index_count, uint32_t first_index, int32_t vertex_offset,
                              uint32_t instance_count, uint32_t first_instance) override;
-            void dispatch(uint32_t, uint32_t, uint32_t) override
-            {
-                GEN_LOG_ERROR("[Metal] compute dispatch is not used by the engine");
-            }
+            void dispatch(uint32_t group_x, uint32_t group_y, uint32_t group_z) override;
             void copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset, RHIBuffer *dst, uint64_t dst_offset, uint64_t size) override;
             void copyBufferToImage(RHIBuffer *src, RHITexture *dst, const BufferImageCopy &region) override;
             void copyImageToBuffer(RHITexture *src, RHIBuffer *dst, const BufferImageCopy &region) override;
@@ -449,6 +450,11 @@ namespace Genesis
                 for (uint32_t i = 0; i < count; ++i)
                     if (barriers[i].texture) static_cast<MTLTextureRHI *>(barriers[i].texture)->setCurrentLayout(barriers[i].new_layout);
             }
+            void bufferBarrier(RHIBuffer *, BufferAccess, BufferAccess) override
+            {
+                // MTLResource hazardTrackingMode is tracked for device-created
+                // buffers, so the encoder transition is sufficient.
+            }
             void generateMipmaps(RHITexture *texture) override;
             void blitImage(RHITexture *src, uint32_t src_mip, RHITexture *dst, uint32_t dst_mip,
                            uint32_t src_layer, uint32_t dst_layer, uint32_t layer_count, bool linear_filter) override;
@@ -458,7 +464,15 @@ namespace Genesis
             void endEncoders()
             {
                 if (render) { [render endEncoding]; render = nil; }
+                if (compute) { [compute endEncoding]; compute = nil; compute_bound = false; }
                 if (blit) { [blit endEncoding]; blit = nil; }
+            }
+            id<MTLComputeCommandEncoder> computeEncoder()
+            {
+                if (render) { [render endEncoding]; render = nil; }
+                if (blit) { [blit endEncoding]; blit = nil; }
+                if (!compute) compute = [cb computeCommandEncoder];
+                return compute;
             }
             id<MTLBlitCommandEncoder> blitEncoder()
             {
@@ -535,7 +549,7 @@ namespace Genesis
                 info_.max_uniform_buffer_range = 64 * 1024;
                 info_.min_uniform_buffer_offset_alignment = 256;
                 info_.max_push_constant_size = 4096;
-                info_.supports_compute = false;
+                info_.supports_compute = true;
                 info_.supports_geometry_shader = false;
                 info_.supports_tessellation = false;
                 info_.supports_multisample = true;
@@ -865,8 +879,29 @@ namespace Genesis
             {
                 if (d.is_compute)
                 {
-                    GEN_LOG_ERROR("[Metal] compute pipelines are not supported ('%s')", d.name.c_str());
-                    return nullptr;
+                    id<MTLFunction> fn = nil;
+                    for (const ShaderStageDesc &sd : d.shaders)
+                        if (sd.stage == ShaderStageFlagBits::Compute) { fn = compileFunction(sd); break; }
+                    if (!fn)
+                    {
+                        GEN_LOG_ERROR("[Metal] compute pipeline '%s' has no compute stage", d.name.c_str());
+                        return nullptr;
+                    }
+                    NSError *error = nil;
+                    id<MTLComputePipelineState> state = [device newComputePipelineStateWithFunction:fn error:&error];
+                    if (!state)
+                    {
+                        GEN_LOG_ERROR("[Metal] compute pipeline '%s' creation failed: %s", d.name.c_str(),
+                                      error ? error.localizedDescription.UTF8String : "unknown error");
+                        return nullptr;
+                    }
+                    MTLPipelineRHI *out = new MTLPipelineRHI();
+                    out->compute_state = state;
+                    out->compute_ = true;
+                    out->desc_ = d;
+                    out->desc_.shaders.clear();
+                    pipelines.push_back(out);
+                    return out;
                 }
                 MTLRenderPipelineDescriptor *pd = [[MTLRenderPipelineDescriptor alloc] init];
                 pd.label = nsString(d.name);
@@ -1173,6 +1208,7 @@ namespace Genesis
             index_buffer = nullptr;
             framebuffer = nullptr;
             pass = nullptr;
+            compute_bound = false;
         }
 
         void MTLCommandBufferRHI::end()
@@ -1275,7 +1311,16 @@ namespace Genesis
         void MTLCommandBufferRHI::bindPipeline(RHIPipeline *p)
         {
             pipeline = static_cast<MTLPipelineRHI *>(p);
-            if (!render || !pipeline) return;
+            if (!pipeline) return;
+            if (pipeline->compute_)
+            {
+                id<MTLComputeCommandEncoder> enc = computeEncoder();
+                if (!enc) return;
+                [enc setComputePipelineState:pipeline->compute_state];
+                compute_bound = true;
+                return;
+            }
+            if (!render) return;
             [render setRenderPipelineState:pipeline->state];
             [render setDepthStencilState:pipeline->depth_state];
             [render setCullMode:pipeline->cull];
@@ -1302,7 +1347,8 @@ namespace Genesis
         void MTLCommandBufferRHI::bindDescriptorSets(RHIPipeline *, RHIDescriptorSet *const *bound, uint32_t set_count,
                                                      const uint32_t *dynamic_offsets, uint32_t offset_count)
         {
-            if (!render) return;
+            id<MTLComputeCommandEncoder> compute_enc = (compute && compute_bound) ? compute : nil;
+            if (!render && !compute_enc) return;
             uint32_t dyn = 0;
             for (uint32_t s = 0; s < set_count; ++s)
             {
@@ -1319,17 +1365,20 @@ namespace Genesis
                             dynamic_offsets && dyn < offset_count)
                             offset += dynamic_offsets[dyn++];
                         if (!e.buffer) continue;
-                        [render setVertexBuffer:e.buffer->buffer offset:offset atIndex:slot];
-                        [render setFragmentBuffer:e.buffer->buffer offset:offset atIndex:slot];
+                        if (compute_enc) [compute_enc setBuffer:e.buffer->buffer offset:offset atIndex:slot];
+                        if (render) [render setVertexBuffer:e.buffer->buffer offset:offset atIndex:slot];
+                        if (render) [render setFragmentBuffer:e.buffer->buffer offset:offset atIndex:slot];
                     }
                     else if (e.texture)
                     {
-                        [render setVertexTexture:e.texture->texture atIndex:slot];
-                        [render setFragmentTexture:e.texture->texture atIndex:slot];
+                        if (compute_enc) [compute_enc setTexture:e.texture->texture atIndex:slot];
+                        if (render) [render setVertexTexture:e.texture->texture atIndex:slot];
+                        if (render) [render setFragmentTexture:e.texture->texture atIndex:slot];
                         if (e.sampler && slot < 16)
                         {
-                            [render setVertexSamplerState:e.sampler->sampler atIndex:slot];
-                            [render setFragmentSamplerState:e.sampler->sampler atIndex:slot];
+                            if (compute_enc) [compute_enc setSamplerState:e.sampler->sampler atIndex:slot];
+                            if (render) [render setVertexSamplerState:e.sampler->sampler atIndex:slot];
+                            if (render) [render setFragmentSamplerState:e.sampler->sampler atIndex:slot];
                         }
                     }
                 }
@@ -1338,9 +1387,13 @@ namespace Genesis
 
         void MTLCommandBufferRHI::setPushConstants(const void *data, uint32_t size)
         {
-            if (!render || !data || !size) return;
-            [render setVertexBytes:data length:size atIndex:kMetalPushConstantSlot];
-            [render setFragmentBytes:data length:size atIndex:kMetalPushConstantSlot];
+            if (!data || !size) return;
+            if (compute && compute_bound) [compute setBytes:data length:size atIndex:kMetalPushConstantSlot];
+            if (render)
+            {
+                [render setVertexBytes:data length:size atIndex:kMetalPushConstantSlot];
+                [render setFragmentBytes:data length:size atIndex:kMetalPushConstantSlot];
+            }
         }
 
         void MTLCommandBufferRHI::setViewport(const Viewport &vp)
@@ -1384,6 +1437,16 @@ namespace Genesis
                             instanceCount:std::max(1u, instance_count)
                                baseVertex:vertex_offset
                              baseInstance:first_instance];
+        }
+
+        void MTLCommandBufferRHI::dispatch(uint32_t group_x, uint32_t group_y, uint32_t group_z)
+        {
+            if (!compute || !compute_bound || !pipeline || !pipeline->compute_state) return;
+            const uint32_t wx = std::max(1u, pipeline->desc_.compute_workgroup_x);
+            const uint32_t wy = std::max(1u, pipeline->desc_.compute_workgroup_y);
+            const uint32_t wz = std::max(1u, pipeline->desc_.compute_workgroup_z);
+            [compute dispatchThreadgroups:MTLSizeMake(group_x, group_y, group_z)
+                    threadsPerThreadgroup:MTLSizeMake(wx, wy, wz)];
         }
 
         void MTLCommandBufferRHI::copyBufferToBuffer(RHIBuffer *src, uint64_t src_offset, RHIBuffer *dst, uint64_t dst_offset, uint64_t size)

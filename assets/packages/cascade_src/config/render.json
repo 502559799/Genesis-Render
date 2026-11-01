@@ -1,0 +1,7 @@
+{
+  "exposure": 1.2,
+  "gamma": 2.2,
+  "tonemap": "aces",
+  "ibl": true,
+  "skybox": true
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Pendulum",
+  "base_color": [
+    0.85,
+    0.3,
+    0.55,
+    1.0
+  ],
+  "metallic": 0.9,
+  "roughness": 0.25
+}

@@ -317,6 +317,12 @@ namespace Genesis
         {
             return GL_UNIFORM_BLOCK_BASE + set * GL_BINDING_STRIDE + binding;
         }
+        // Storage buffers use their own binding namespace on GL.  The shader
+        // side uses the same set*8+binding flattening through GS_SSBO_SLOT.
+        inline uint32_t glStorageBlockIndex(uint32_t set, uint32_t binding)
+        {
+            return set * GL_BINDING_STRIDE + binding;
+        }
         inline uint32_t glTextureUnit(uint32_t set, uint32_t binding)
         {
             return set * GL_BINDING_STRIDE + binding;

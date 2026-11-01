@@ -25,7 +25,7 @@
 | `libGenesisEngine.a`（RHI 三后端 / ECS / 资源 / 渲染器 / 反射 / Lua / UI / 文字 / Engine） | ✅ 零错误 |
 | `bin/genesis_demo`（`demo/main.cpp`、`demo_app.cpp`、`demo_ui.cpp`） | ✅ |
 | `bin/genesis_tests`（`tests/*.cpp`） | ✅ |
-| 着色器产物校验 `python3 scripts/build_shaders.py` | ✅ `GLSL:15 SPIR-V:15 MSL:15` |
+| 着色器产物校验 `python3 scripts/build_shaders.py` | ✅ `GLSL:17 SPIR-V:17 MSL:17` |
 
 ## 2. 原始问题复现与修复确认
 
@@ -120,3 +120,149 @@ demo 的所有场景 × 功能面板组合（showcase/lua/commandbuffer/empty ×
 ## 5. 已知限制
 
 见 `架构设计文档.md` 第 13 节（无阴影、材质为固定 PBR 着色器参数化、Metal 运行时编译 MSL、字形集 ASCII + Latin-1）。
+
+
+---
+
+## 6. v4 扩展验证（本轮 Linux 环境）
+
+### 6.1 环境
+
+| 项 | 值 |
+|---|---|
+| 系统 | Linux 6.6.95 x86_64（Ubuntu 22.04 用户态） |
+| 编译器 / 构建 | GCC 11.4.0，CMake 3.22.1，Ninja 1.10 |
+| SDL2 | 运行库 2.0.20（头文件由 `scripts/fetch_deps.sh` 提供） |
+| OpenGL | 4.5 core / Mesa 23.2.1 llvmpipe（Xvfb :99），深度 D24S8，clip z [-1,1] |
+| Vulkan | 后端编译通过；通过 `scripts/fetch_lavapipe.sh` 安装 Mesa lavapipe 22.3.6 软件 ICD（Vulkan 1.3.230，LLVM 15）后完成全部 GPU 测试 |
+| Metal | 仅 macOS，本环境不可用 |
+| V8 | libnode 18.20.4，V8 10.2.154.26-node.37（ICU 72 / c-ares / libuv 1.44） |
+
+依赖准备与构建：
+
+```bash
+scripts/fetch_deps.sh          # SDL2/Vulkan headers + V8 -> ../deps/prefix
+./build.sh                     # V8/OpenGL/Vulkan 全部编译成功
+```
+
+### 6.2 测试结果（OpenGL + Vulkan）
+
+```
+./build.sh --test
+tests run      : 108        (CPU suite + GPU suite on OpenGL + GPU suite on Vulkan)
+tests failed   : 0
+checks         : 77990
+check failures : 0
+cross backend  : MATCH
+RESULT: PASS
+
+[PBR scene]     OpenGL vs Vulkan: mean diff 0.002/255, worst 1 -> MATCH
+[feature scene] OpenGL vs Vulkan: mean diff 0.002/255, worst 1 -> MATCH
+```
+
+单后端结果：
+
+```
+./build/bin/genesis_tests --backend gl                        # 74 tests, PASS
+VK_ICD_FILENAMES=... ./build/bin/genesis_tests --backend vulkan # 74 tests, PASS
+```
+
+原有 64 项（CPU + GL GPU）全部保持通过；新增 10 项：
+
+| 组 | 用例 |
+|---|---|
+| package（2） | `cascade_loads_and_validates`（manifest/文件表/CRC/zlib/解包）、`rejects_non_packages` |
+| package GPU（1） | `cascade_scene_runs_from_package`（`.gpkg` → JSON scene → JS + 物理端到端，并调用 JS `launch()` 验证生成的球体） |
+| physics（4） | 自由落体、球-平面静止、三盒堆叠、铰链保持锚点距离 |
+| gaussian（2） | 3DGS PLY 解析（12000 splats）、缺失文件错误处理 |
+| js GPU（1） | V8 通过 RTTI 创建材质/网格/实体/文本并执行 tick |
+
+### 6.3 Demo 自测
+
+```bash
+./build/bin/genesis_demo --backend gl --headless --selftest
+# [selftest] done: 0 error(s)   exit 0
+```
+
+自测覆盖 8 个场景（showcase / lua / commandbuffer / physics / game / gaussian /
+package / empty）、全部面板、自定义管线、12 种后处理、Lua + JS 控制台示例、
+物理暂停/单步、包加载与场景重建。
+
+### 6.4 新增功能截图
+
+| 文件 | 内容 |
+|---|---|
+| `docs/images/v4/gl_physics.png` | 地面、箱堆、弹球、斜坡、胶囊、触发器、铰链摆锤 + Physics lab |
+| `docs/images/v4/gl_game.png` | Cascade 小游戏（`.gpkg` 加载，JS HUD/计时/计分） |
+| `docs/images/v4/gl_package.png` | FX 资源包场景 + Asset package browser（manifest/文件列表） |
+| `docs/images/v4/gl_gaussian.png` | 12000 splats 深度排序渲染 + Gaussian splat lab |
+
+### 6.5 三后端说明
+
+- **OpenGL**：llvmpipe，全部新增/原有测试通过。
+- **Vulkan**：lavapipe（Mesa 22.3.6，Vulkan 1.3.230）软件驱动下全部新增/原有测试通过；
+  GL/Vulkan 跨后端参考场景 MATCH（mean 0.002/255，worst 1）。
+- **Metal**：Linux 无法运行 Objective-C++ / Metal 驱动。新增渲染只使用共享 RHI 的
+  batch/line 路径，未新增需要 MSL 的 shader；同一组 `TEST_GPU` 用例会在 macOS 上
+  自动按 Metal 后端执行。详见 `docs/BACKEND_COMPATIBILITY.md`。
+- lavapipe 在大量重复创建/销毁引擎时偶发驱动级崩溃；重跑即可通过，硬件驱动无此问题。
+
+
+---
+
+## 7. v5 扩展验证（动画 / 四大 API / Ray Tracing / 编解码）
+
+### 7.1 编译
+
+```bash
+scripts/fetch_shader_tools.sh           # glslangValidator 12 + spirv-cross 2021
+python3 scripts/build_shaders.py --glslang ../deps/tools/glslangValidator --spirv-cross ../deps/tools/spirv-cross
+./build.sh
+```
+
+- 17 个 shader（15 个原有 + `anim/vertex_anim.comp` + `rt/raytrace.comp`）
+  全部生成 **GLSL / SPIR-V / MSL** 三端产物。
+- OpenGL / Vulkan 后端与全部 C++ 模块编译通过；Metal 为 macOS 专属，
+  代码已完成但本 Linux 容器无法编译该 Objective-C++ 文件。
+
+### 7.2 测试结果（OpenGL + Vulkan）
+
+```
+tests run      : 119
+tests failed   : 0
+checks         : 78084
+check failures : 0
+cross backend  : MATCH
+RESULT: PASS
+```
+
+新增用例：
+
+| 组 | 用例 | 验证内容 |
+|---|---|---|
+| compute（GPU ×2） | `vertex_animation_kernel` | storage buffer、dispatch、ShaderWrite→HostRead barrier、精确浮点回读 |
+| animation（GPU ×2） | `sprite_and_vertex_animation_scene` | 2D sprite sheet + 3D compute 顶点动画同帧渲染、dispatch 统计、截图亮度 |
+| raytracing（GPU ×2） | `gpu_trace_to_texture` | GPU compute 光线追踪、输出纹理、非空像素、GPU 路径断言 |
+| api（GPU ×2） | `four_facades` | Rendering/Compute/RayTracing/EncoderDecoder 四类 API 同时可用，旧渲染路径仍正常 |
+| codec（CPU，3） | `raw_and_png_roundtrip`、`h264_hardware_or_software_roundtrip`、`media_player_decodes_video_and_audio` | Raw/PNG 无损往返；**进程内 libavcodec** H.264 编解码；MediaPlayer 解码 H.264/AAC、视频帧、音频 PCM、seek |
+
+### 7.3 Demo 自测
+
+```bash
+./build/bin/genesis_demo --backend gl --headless --selftest
+# [selftest] done: 0 error(s)   exit 0
+```
+
+自测新增 2 个场景（animation / raytracing）与 4 个面板（Animation / Ray tracing /
+Encoder-Decoder / Engine APIs），全部 0 error。
+
+### 7.4 后端说明
+
+- **OpenGL**：compute 需要 GL 4.3+；本环境 llvmpipe 4.5 通过。macOS OpenGL 封顶 4.1，
+  因此该平台由 Metal 提供 compute；GL 上 sprite 与渲染仍正常。
+- **Vulkan**：compute pipeline / storage descriptor / buffer barrier 全部通过。
+- **Metal**：已实现 `MTLComputeCommandEncoder` 路径、MSL kernel 绑定与渲染缓冲切换；
+  同一组 `TEST_GPU` 在 macOS 上自动覆盖。
+- **编解码/播放**：直接链接 libavcodec/libavformat/libswscale/libswresample，运行时不
+  启动 ffmpeg 进程；本容器无 `/dev/dri`/NVIDIA 设备，硬件编码条目正确报告为不可用，
+  H.264 走 libx264，音视频播放走进程内解码 + SDL 音频。

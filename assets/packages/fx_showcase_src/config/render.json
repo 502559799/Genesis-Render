@@ -1,0 +1,8 @@
+{
+  "exposure": 1.15,
+  "gamma": 2.2,
+  "tonemap": "aces",
+  "ibl": true,
+  "skybox": true,
+  "note": "Overrides in the scene file win; this file is read by tools/scripts."
+}

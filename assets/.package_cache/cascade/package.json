@@ -1,0 +1,17 @@
+{
+  "name": "cascade",
+  "version": "1.0.0",
+  "description": "Cascade - a physics mini-game packaged as a runtime .gpkg (scene, materials, shaders, textures, JS + Lua scripts, gameplay config).",
+  "scene": "scenes/cascade.scene.json",
+  "capabilities": [
+    "scene",
+    "materials",
+    "shaders_glsl_spirv_msl",
+    "textures",
+    "scripts_js_lua",
+    "config",
+    "physics",
+    "game"
+  ],
+  "engine_version_min": "2.0.0"
+}

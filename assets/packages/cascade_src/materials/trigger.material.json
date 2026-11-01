@@ -1,0 +1,14 @@
+{
+  "name": "Trigger",
+  "base_color": [
+    0.15,
+    1.0,
+    0.55,
+    0.18
+  ],
+  "metallic": 0.0,
+  "roughness": 0.5,
+  "shading": "unlit",
+  "blend": "transparent",
+  "depth_write": false
+}
