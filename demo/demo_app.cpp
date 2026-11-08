@@ -40,6 +40,7 @@ namespace Demo
         case SceneKind::Animation: return "animation";
         case SceneKind::RayTracing: return "raytracing";
         case SceneKind::Media: return "media";
+        case SceneKind::ResultGlb: return "result";
         case SceneKind::Empty: return "empty";
         default: return "?";
         }
@@ -62,6 +63,11 @@ namespace Demo
         if (name == "anim" || name == "sprite") { out = SceneKind::Animation; return true; }
         if (name == "rt" || name == "raytrace") { out = SceneKind::RayTracing; return true; }
         if (name == "video" || name == "player") { out = SceneKind::Media; return true; }
+        if (name == "glb" || name == "pbr" || name == "result_glb" || name == "result.glb" || name == "car")
+        {
+            out = SceneKind::ResultGlb;
+            return true;
+        }
         return false;
     }
 
@@ -121,6 +127,12 @@ namespace Demo
         const float sizes[] = {1.6f, 1.1f, 1.7f};
         for (int i = 0; i < 3; ++i) preview_meshes_.push_back(Reflect::createMeshAsset(kinds[i], sizes[i], 64));
         preview_meshes_.push_back(Reflect::loadMeshAsset(asset("models/DamagedHelmet.glb")));
+        {
+            std::string result_glb = asset("models/result.glb");
+            if (!ResourceIO::fileExists(result_glb)) result_glb = "/Users/bytedance/Downloads/result.glb";
+            if (ResourceIO::fileExists(result_glb))
+                preview_meshes_.push_back(Reflect::loadMeshAsset(result_glb));
+        }
 
         refreshPackageList();
         if (options.lab.empty() || options.lab == "material") show_material_ = true;
@@ -234,6 +246,7 @@ namespace Demo
         case SceneKind::Animation: buildAnimationScene(); break;
         case SceneKind::RayTracing: buildRayTracingScene(); break;
         case SceneKind::Media: buildMediaScene(); break;
+        case SceneKind::ResultGlb: buildResultGlbScene(); break;
         case SceneKind::Package:
             if (!engine.activePackage() && !options.package.empty())
             {
@@ -247,7 +260,8 @@ namespace Demo
         default: buildMinimalRig(); break;
         }
         registerLabBuffers();
-        selected_ = engine.world().findEntity("DamagedHelmet");
+        selected_ = engine.world().findEntity("ResultGlb");
+        if (!selected_.valid()) selected_ = engine.world().findEntity("DamagedHelmet");
         GEN_LOG_INFO("[Demo] scene '%s': %zu entities, %zu materials", sceneName(kind), engine.world().entityCount(),
                      engine.render().scene().materialCount());
     }
@@ -987,6 +1001,59 @@ namespace Demo
         GEN_LOG_INFO("[Demo] media scene: %s", media_status_.c_str());
     }
 
+    //======================================================================
+    // Result GLB PBR Showcase scene
+    //======================================================================
+    void DemoApp::buildResultGlbScene()
+    {
+        ECS::World &world = engine.world();
+        monitor_enabled_ = false;
+
+        const std::string scene_json = asset("scenes/result_pbr.scene.json");
+        Scene::LoadResult loaded;
+        if (ResourceIO::fileExists(scene_json))
+            loaded = Scene::loadFromFile(engine, scene_json, options.asset_dir);
+
+        if (!loaded.ok)
+        {
+            buildMinimalRig();
+            Render::RenderSettings &s = engine.render().settings();
+            s.shading_mode = Render::ShadingMode::CookTorrance;
+            s.tonemap_mode = Render::TonemapMode::Aces;
+            s.exposure = 1.25f;
+            s.gamma = 2.2f;
+            s.use_ibl = true;
+            s.show_skybox = true;
+            s.env_intensity = 1.25f;
+        }
+
+        camera_ = world.findEntity("MainCamera");
+        sun_ = world.findEntity("Sun");
+        warm_ = world.findEntity("PointLightWarm");
+        cool_ = world.findEntity("PointLightCool");
+
+        ECS::Entity result_entity = world.findEntity("ResultGlb");
+        if (!result_entity.valid() || !world.hasComponent<ECS::MeshComponent>(result_entity))
+        {
+            std::string glb_path = asset("models/result.glb");
+            if (!ResourceIO::fileExists(glb_path)) glb_path = "/Users/bytedance/Downloads/result.glb";
+            if (result_entity.valid()) world.destroyEntity(result_entity);
+            result_entity = spawnFile(glb_path, "ResultGlb", Math::Vec3(0.0f, 0.6515f, 0.0f), 4.2f);
+            addLabel(result_entity, "result.glb (Cook-Torrance PBR + IBL)", 0.95f, Math::Color(1.0f, 0.92f, 0.55f));
+        }
+
+        if (result_entity.valid())
+        {
+            selected_ = result_entity;
+            if (Render::MaterialPtr mat = entityMaterial(result_entity))
+            {
+                material_index_ = mat->index;
+                scroll_to_material_ = true;
+            }
+            if (preview_meshes_.size() >= 5) preview_mesh_ = 4;
+        }
+    }
+
     void DemoApp::updateMedia(float dt)
     {
         if (!media_player_ || scene_ != SceneKind::Media) return;
@@ -1281,12 +1348,14 @@ namespace Demo
         if (!mesh) mesh = preview_meshes_[0];
 
         Render::CommandBuffer &cb = *preview_cb_;
-        const float dist = preview_mesh_ == 3 ? 2.9f : 3.0f;
+        const float dist = preview_mesh_ == 3 ? 2.9f : preview_mesh_ == 4 ? 2.5f : 3.0f;
         cb.setRenderTarget(preview_hdr_);
         cb.clearRenderTarget(true, Math::Color(0.06f, 0.065f, 0.08f, 1.0f), true);
         cb.setCamera(Math::Vec3(0.0f, 0.5f, dist), Math::Vec3(0.0f), 38.0f, 0.05f, 50.0f);
         if (preview_sky_) cb.drawSkybox();
-        Math::Mat4 model = Math::Mat4::fromQuat(Math::Quat::fromAxisAngle(Math::Vec3(0, 1, 0), preview_yaw_));
+        const float scale = preview_mesh_ == 4 ? 2.0f : 1.0f;
+        Math::Mat4 model = Math::Mat4::fromQuat(Math::Quat::fromAxisAngle(Math::Vec3(0, 1, 0), preview_yaw_)) *
+                           Math::Mat4::scale(Math::Vec3(scale));
         for (uint32_t gm : mesh->gpu_meshes) cb.drawMesh(gm, model, mat);
         cb.blit(Render::RenderTargetId::of(preview_hdr_), Render::RenderTargetId::of(preview_ldr_));
     }

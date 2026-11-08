@@ -1,0 +1,251 @@
+{
+  "name": "Result GLB PBR Showcase",
+  "render": {
+    "tonemap": "aces",
+    "exposure": 1.25,
+    "gamma": 2.2,
+    "saturation": 1.05,
+    "vignette": 0.12,
+    "ambient": [0.03, 0.035, 0.045, 1.0],
+    "ambient_intensity": 1.0,
+    "env_intensity": 1.25,
+    "env_rotation": 25.0,
+    "skybox": true,
+    "ibl": true,
+    "shading": "cook_torrance",
+    "frustum_culling": true,
+    "text_components": true,
+    "pipeline": "forward"
+  },
+  "environment": {
+    "hdr": "textures/sky_equirect.hdr",
+    "intensity": 1.25,
+    "skybox": true,
+    "ibl": true,
+    "rotation": 25.0
+  },
+  "materials": [
+    {
+      "name": "ShowroomGround",
+      "base_color": [0.22, 0.24, 0.28, 1.0],
+      "metallic": 0.85,
+      "roughness": 0.38,
+      "normal_scale": 0.65,
+      "occlusion_strength": 1.0,
+      "uv_scale": [6.0, 6.0],
+      "shading": "cook_torrance",
+      "textures": {
+        "base_color": "textures/checker_albedo.png",
+        "metallic_roughness": "textures/checker_metallic_roughness.png",
+        "normal": "textures/panel_normal.png",
+        "occlusion": "textures/tile_ao.png"
+      }
+    },
+    {
+      "name": "PBR Chrome",
+      "base_color": [0.95, 0.96, 0.98, 1.0],
+      "metallic": 1.0,
+      "roughness": 0.06,
+      "shading": "cook_torrance"
+    },
+    {
+      "name": "PBR Gold",
+      "base_color": [1.0, 0.78, 0.34, 1.0],
+      "metallic": 1.0,
+      "roughness": 0.18,
+      "shading": "cook_torrance"
+    },
+    {
+      "name": "PBR Nismo Red",
+      "base_color": [0.85, 0.06, 0.09, 1.0],
+      "metallic": 0.35,
+      "roughness": 0.14,
+      "shading": "cook_torrance"
+    },
+    {
+      "name": "PBR Ceramic",
+      "base_color": [0.92, 0.92, 0.90, 1.0],
+      "metallic": 0.0,
+      "roughness": 0.12,
+      "shading": "cook_torrance"
+    }
+  ],
+  "entities": [
+    {
+      "name": "MainCamera",
+      "transform": {
+        "position": [2.8, 1.8, 4.2]
+      },
+      "components": {
+        "camera": {
+          "fov": 45.0,
+          "near": 0.05,
+          "far": 300.0
+        },
+        "controller": {
+          "mode": "orbit",
+          "target": [0.0, 0.68, 0.0],
+          "distance": 4.8,
+          "yaw": 32.0,
+          "pitch": 16.0
+        }
+      }
+    },
+    {
+      "name": "Sun",
+      "transform": {
+        "euler": [-45.0, 35.0, 0.0]
+      },
+      "components": {
+        "light": {
+          "type": "directional",
+          "intensity": 4.2,
+          "color": [1.0, 0.96, 0.90, 1.0]
+        }
+      }
+    },
+    {
+      "name": "PointLightWarm",
+      "transform": {
+        "position": [2.6, 1.8, 2.2]
+      },
+      "components": {
+        "light": {
+          "type": "point",
+          "intensity": 14.0,
+          "range": 12.0,
+          "color": [1.0, 0.58, 0.28, 1.0]
+        }
+      }
+    },
+    {
+      "name": "PointLightCool",
+      "transform": {
+        "position": [-2.8, 1.5, -2.0]
+      },
+      "components": {
+        "light": {
+          "type": "point",
+          "intensity": 12.0,
+          "range": 12.0,
+          "color": [0.35, 0.68, 1.0, 1.0]
+        }
+      }
+    },
+    {
+      "name": "Ground",
+      "transform": {
+        "position": [0.0, 0.0, 0.0]
+      },
+      "mesh": {
+        "kind": "plane",
+        "size": 24.0
+      },
+      "material": "ShowroomGround"
+    },
+    {
+      "name": "ResultGlb",
+      "transform": {
+        "position": [0.0, 0.6515, 0.0],
+        "scale": [4.2, 4.2, 4.2]
+      },
+      "mesh": {
+        "model": "models/result.glb"
+      },
+      "components": {
+        "text": {
+          "text": "result.glb (Cook-Torrance PBR + IBL)",
+          "size": 0.18,
+          "offset": [0.0, 0.95, 0.0],
+          "color": [1.0, 0.92, 0.55, 1.0],
+          "outline": 0.18,
+          "outline_color": [0.0, 0.0, 0.0, 0.85]
+        }
+      }
+    },
+    {
+      "name": "RefSphereChrome",
+      "transform": {
+        "position": [-2.1, 0.45, -1.2]
+      },
+      "mesh": {
+        "kind": "sphere",
+        "size": 0.9,
+        "detail": 48
+      },
+      "material": "PBR Chrome",
+      "components": {
+        "text": {
+          "text": "Chrome",
+          "size": 0.16,
+          "offset": [0.0, 0.65, 0.0],
+          "color": [0.9, 0.95, 1.0, 1.0],
+          "outline": 0.18
+        }
+      }
+    },
+    {
+      "name": "RefSphereGold",
+      "transform": {
+        "position": [-2.1, 0.45, 0.2]
+      },
+      "mesh": {
+        "kind": "sphere",
+        "size": 0.9,
+        "detail": 48
+      },
+      "material": "PBR Gold",
+      "components": {
+        "text": {
+          "text": "Gold",
+          "size": 0.16,
+          "offset": [0.0, 0.65, 0.0],
+          "color": [1.0, 0.88, 0.5, 1.0],
+          "outline": 0.18
+        }
+      }
+    },
+    {
+      "name": "RefSphereRed",
+      "transform": {
+        "position": [2.1, 0.45, -1.2]
+      },
+      "mesh": {
+        "kind": "sphere",
+        "size": 0.9,
+        "detail": 48
+      },
+      "material": "PBR Nismo Red",
+      "components": {
+        "text": {
+          "text": "Clearcoat",
+          "size": 0.16,
+          "offset": [0.0, 0.65, 0.0],
+          "color": [1.0, 0.6, 0.6, 1.0],
+          "outline": 0.18
+        }
+      }
+    },
+    {
+      "name": "RefSphereCeramic",
+      "transform": {
+        "position": [2.1, 0.45, 0.2]
+      },
+      "mesh": {
+        "kind": "sphere",
+        "size": 0.9,
+        "detail": 48
+      },
+      "material": "PBR Ceramic",
+      "components": {
+        "text": {
+          "text": "Dielectric",
+          "size": 0.16,
+          "offset": [0.0, 0.65, 0.0],
+          "color": [0.95, 0.95, 0.95, 1.0],
+          "outline": 0.18
+        }
+      }
+    }
+  ]
+}

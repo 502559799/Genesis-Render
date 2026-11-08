@@ -51,6 +51,7 @@ namespace Demo
         Animation,         // 2D sprite + 3D compute vertex animation
         RayTracing,        // GPU compute ray tracer page
         Media,             // libav* video + audio playback
+        ResultGlb,         // result.glb PBR showcase scene
         Empty,
         Count
     };
@@ -70,7 +71,7 @@ namespace Demo
         std::string screenshot;
         std::string showcase_dir;
         std::string asset_dir = GENESIS_ASSET_DIR;
-        SceneKind scene = SceneKind::Showcase;
+        SceneKind scene = SceneKind::ResultGlb;
         std::string script; // extra script file attached as a script entity (.lua / .js)
         std::string package; // .gpkg loaded by --scene package / game
         std::string lab;    // pre-enabled lab: material | commandbuffer | custom | text | physics | gaussian | package
@@ -110,6 +111,7 @@ namespace Demo
         void buildAnimationScene();
         void buildRayTracingScene();
         void buildMediaScene();
+        void buildResultGlbScene();
         bool loadPackage(const std::string &path, std::string *error = nullptr);
         void buildFromActivePackage();
         void recordPhysicsDebug();
@@ -159,7 +161,7 @@ namespace Demo
         Render::MaterialPtr entityMaterial(ECS::Entity e);
 
         // ---- state ----------------------------------------------------------
-        SceneKind scene_ = SceneKind::Showcase;
+        SceneKind scene_ = SceneKind::ResultGlb;
         SceneKind pending_scene_ = SceneKind::Count; // Count = nothing pending
         float time_ = 0.0f;
         float tour_time_ = 0.0f;

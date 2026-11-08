@@ -136,7 +136,8 @@ namespace Demo
             const char *labels[] = {"Showcase (C++)", "Built by Lua script (RTTI)", "CommandBuffer demo (Lua)",
                                     "Physics playground", "Cascade mini-game (package)", "Gaussian splat viewer",
                                     "Package scene (.gpkg)", "Animation lab (2D sprite + 3D compute)",
-                                    "Ray tracing (compute)", "Media player (libavcodec)", "Empty"};
+                                    "Ray tracing (compute)", "Media player (libavcodec)",
+                                    "Result GLB PBR (result.glb)", "Empty"};
             for (uint32_t i = 0; i < (uint32_t)SceneKind::Count; ++i)
                 if (ImGui::MenuItem(labels[i], nullptr, scene_ == (SceneKind)i)) pending_scene_ = (SceneKind)i;
             ImGui::Separator();
@@ -205,7 +206,7 @@ namespace Demo
         const char *scenes[] = {"Showcase (C++)", "Built by Lua (RTTI)", "CommandBuffer demo (Lua)", "Physics playground",
                                 "Cascade mini-game (package)", "Gaussian splat viewer", "Package scene (.gpkg)",
                                 "Animation lab (2D sprite + 3D compute)", "Ray tracing (compute)",
-                                "Media player (libavcodec)", "Empty"};
+                                "Media player (libavcodec)", "Result GLB PBR (result.glb)", "Empty"};
         int sc = (int)scene_;
         if (ImGui::Combo("scene", &sc, scenes, (int)SceneKind::Count)) pending_scene_ = (SceneKind)sc;
         if (ImGui::Button("Screenshot"))
@@ -437,9 +438,9 @@ namespace Demo
         UI::image(preview_ldr_, pw, pw);
         ImGui::SameLine();
         ImGui::BeginGroup();
-        const char *meshes[] = {"sphere", "box", "torus", "helmet"};
+        const char *meshes[] = {"sphere", "box", "torus", "helmet", "result"};
         ImGui::SetNextItemWidth(90);
-        ImGui::Combo("##mesh", &preview_mesh_, meshes, 4);
+        ImGui::Combo("##mesh", &preview_mesh_, meshes, (int)std::min<size_t>(5, preview_meshes_.size()));
         ImGui::Checkbox("rotate", &preview_rotate_);
         ImGui::Checkbox("sky", &preview_sky_);
         ImGui::EndGroup();

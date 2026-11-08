@@ -64,6 +64,7 @@ namespace
             "           animation      2D sprite sheets + 3D compute vertex animation\n"
             "           raytracing     GPU compute ray tracer page\n"
             "           media          libavcodec video + SDL audio playback\n"
+            "           result         result.glb PBR + IBL showcase scene\n"
             "           empty          camera, sun and sky only\n"
             "  --showcase DIR  headless: render labelled PNGs that each isolate one capability\n");
     }
@@ -102,9 +103,9 @@ namespace
             else if (a == "--record-fps") o.record_fps = (float)std::atof(next("15").c_str());
             else if (a == "--scene")
             {
-                std::string v = next("showcase");
+                std::string v = next("result");
                 if (!Demo::sceneFromName(v, o.scene))
-                    GEN_LOG_WARN("unknown scene '%s' (showcase | lua | commandbuffer | physics | game | gaussian | package | animation | raytracing | media | empty)", v.c_str());
+                    GEN_LOG_WARN("unknown scene '%s' (showcase | lua | commandbuffer | physics | game | gaussian | package | animation | raytracing | media | result | empty)", v.c_str());
             }
             else if (a == "--help" || a == "-h")
             {
@@ -358,6 +359,7 @@ namespace
         {
             struct ModelShot { const char *file; const char *name; float scale; Math::Vec3 cam; };
             const ModelShot shots[] = {
+                {"models/result.glb", "model_glb_result", 2.2f, Math::Vec3(1.8f, 1.0f, 2.6f)},
                 {"models/DamagedHelmet.glb", "model_glb_damaged_helmet", 1.0f, Math::Vec3(0, 0.1f, 3.2f)},
                 {"models/genesis_sphere.glb", "model_glb_sphere", 1.0f, Math::Vec3(0, 0.2f, 3.4f)},
                 {"models/genesis_test_cube.fbx", "model_fbx_cube", 1.6f, Math::Vec3(1.4f, 1.1f, 2.6f)},

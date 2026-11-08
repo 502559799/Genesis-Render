@@ -67,13 +67,14 @@ namespace Genesis
     void MeshData::computeTangents()
     {
         if (vertices.empty()) return;
-        for (auto &v : vertices)
-        {
-            v.tangent[0] = 1.0f; v.tangent[1] = 0.0f; v.tangent[2] = 0.0f; v.tangent[3] = 1.0f;
-        }
+        std::vector<Math::Vec3> tan1(vertices.size(), Math::Vec3(0.0f));
+        std::vector<Math::Vec3> tan2(vertices.size(), Math::Vec3(0.0f));
 
-        auto accumulate = [&](Vertex &va, Vertex &vb, Vertex &vc)
+        auto accumulate = [&](size_t ia, size_t ib, size_t ic)
         {
+            const Vertex &va = vertices[ia];
+            const Vertex &vb = vertices[ib];
+            const Vertex &vc = vertices[ic];
             Math::Vec3 p0(va.position), p1(vb.position), p2(vc.position);
             Math::Vec2 uv0(va.uv0[0], va.uv0[1]), uv1(vb.uv0[0], vb.uv0[1]), uv2(vc.uv0[0], vc.uv0[1]);
             Math::Vec3 e1 = p1 - p0, e2 = p2 - p0;
@@ -87,43 +88,43 @@ namespace Genesis
             Math::Vec3 b((du1 * e2.x - du2 * e1.x) * f,
                          (du1 * e2.y - du2 * e1.y) * f,
                          (du1 * e2.z - du2 * e1.z) * f);
-            for (Vertex *v : {&va, &vb, &vc})
+            for (size_t idx : {ia, ib, ic})
             {
-                v->tangent[0] += t.x; v->tangent[1] += t.y; v->tangent[2] += t.z;
-                // store bitangent accumulation in uv1 slot? no - keep handedness below
-                (void)b;
+                tan1[idx] += t;
+                tan2[idx] += b;
             }
-            // handedness determined once per triangle using the first vertex normal
-            Math::Vec3 n(va.normal);
-            float handedness = (Math::dot(Math::cross(n, t), b) < 0.0f) ? -1.0f : 1.0f;
-            (void)handedness;
         };
 
         if (indices.empty())
         {
             for (size_t i = 0; i + 2 < vertices.size(); i += 3)
-                accumulate(vertices[i], vertices[i + 1], vertices[i + 2]);
+                accumulate(i, i + 1, i + 2);
         }
         else
         {
             for (size_t i = 0; i + 2 < indices.size(); i += 3)
-                accumulate(vertices[indices[i]], vertices[indices[i + 1]], vertices[indices[i + 2]]);
+                accumulate(indices[i], indices[i + 1], indices[i + 2]);
         }
 
         // Orthonormalise (Gram-Schmidt) and compute the handedness sign.
-        for (auto &v : vertices)
+        for (size_t i = 0; i < vertices.size(); ++i)
         {
+            Vertex &v = vertices[i];
             Math::Vec3 n(v.normal);
-            Math::Vec3 t(v.tangent[0], v.tangent[1], v.tangent[2]);
+            Math::Vec3 t = tan1[i];
             if (Math::lengthSquared(t) < 1e-12f)
             {
                 // Fall back to an arbitrary tangent perpendicular to n
                 Math::Vec3 axis = std::fabs(n.x) < 0.9f ? Math::Vec3(1, 0, 0) : Math::Vec3(0, 1, 0);
                 t = Math::normalize(Math::cross(axis, n));
             }
-            t = Math::normalize(t - n * Math::dot(n, t));
+            else
+            {
+                t = Math::normalize(t - n * Math::dot(n, t));
+            }
+            float w = (Math::lengthSquared(tan2[i]) > 1e-12f && Math::dot(Math::cross(n, t), tan2[i]) < 0.0f) ? -1.0f : 1.0f;
             v.tangent[0] = t.x; v.tangent[1] = t.y; v.tangent[2] = t.z;
-            v.tangent[3] = 1.0f;
+            v.tangent[3] = w;
         }
         has_tangents = true;
     }

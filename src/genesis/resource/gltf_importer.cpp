@@ -144,8 +144,8 @@ namespace Genesis
                 m.metallic_factor = pbr.metallic_factor;
                 m.roughness_factor = pbr.roughness_factor;
                 m.emissive_factor = Math::Color(src.emissive_factor[0], src.emissive_factor[1], src.emissive_factor[2], 1.0f);
-                m.normal_scale = src.normal_texture.scale;
-                m.occlusion_strength = src.occlusion_texture.scale; // cgltf stores occlusion strength in `scale`
+                m.normal_scale = src.normal_texture.texture ? src.normal_texture.scale : 1.0f;
+                m.occlusion_strength = src.occlusion_texture.texture ? src.occlusion_texture.scale : 1.0f; // cgltf stores occlusion strength in `scale`
                 m.alpha_cutoff = src.alpha_cutoff > 0.0f ? src.alpha_cutoff : 0.5f;
                 m.double_sided = src.double_sided;
                 switch (src.alpha_mode)
@@ -160,6 +160,14 @@ namespace Genesis
                 resolveTexture(src.normal_texture.texture, data, *model, m.normal, false, base_dir);
                 resolveTexture(src.occlusion_texture.texture, data, *model, m.occlusion, false, base_dir);
                 resolveTexture(src.emissive_texture.texture, data, *model, m.emissive, true, base_dir);
+
+                if (!m.occlusion.valid && m.metallic_roughness.valid)
+                {
+                    const std::string &mr_name = m.metallic_roughness.embedded ? m.metallic_roughness.embedded->name
+                                                                               : m.metallic_roughness.path;
+                    if (mr_name.find("ORM") != std::string::npos || mr_name.find("orm") != std::string::npos)
+                        m.occlusion = m.metallic_roughness;
+                }
 
                 model->materials.push_back(m);
             }
