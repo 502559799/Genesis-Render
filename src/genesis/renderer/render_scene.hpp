@@ -117,6 +117,9 @@ namespace Genesis
 
             RHI::RHIDevice *device_ = nullptr;
             std::unordered_map<std::string, GpuTexture> cache_;
+            // Embedded cache keys contain an address; retain the source so a
+            // later import cannot reuse that address for different pixels.
+            std::unordered_map<std::string, std::shared_ptr<ImageData>> embedded_sources_;
             std::unordered_map<std::string, RHI::RHISampler *> samplers_;
             GpuTexture white_, black_, normal_, grey_, black_cube_;
         };

@@ -128,7 +128,7 @@ namespace Genesis
                         }
 
                         Math::Vec3 move(0.0f);
-                        if (!ui_owns_mouse || !input_->ui_wants_keyboard)
+                        if (!input_->ui_wants_keyboard)
                         {
                             if (input_->wDown()) move += transform.forward();
                             if (input_->sDown()) move -= transform.forward();

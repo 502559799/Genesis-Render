@@ -127,15 +127,10 @@ namespace Demo
         const float sizes[] = {1.6f, 1.1f, 1.7f};
         for (int i = 0; i < 3; ++i) preview_meshes_.push_back(Reflect::createMeshAsset(kinds[i], sizes[i], 64));
         preview_meshes_.push_back(Reflect::loadMeshAsset(asset("models/DamagedHelmet.glb")));
-        {
-            std::string result_glb = asset("models/result.glb");
-            if (!ResourceIO::fileExists(result_glb)) result_glb = "/Users/bytedance/Downloads/result.glb";
-            if (ResourceIO::fileExists(result_glb))
-                preview_meshes_.push_back(Reflect::loadMeshAsset(result_glb));
-        }
 
         refreshPackageList();
-        if (options.lab.empty() || options.lab == "material") show_material_ = true;
+        if (options.lab == "material" || (options.lab.empty() && options.scene != SceneKind::ResultGlb)) show_material_ = true;
+        else if (options.lab == "model") show_model_ = true;
         else if (options.lab == "commandbuffer") show_cb_ = true;
         else if (options.lab == "custom") { show_cb_ = true; custom_pipeline_ = true; }
         else if (options.lab == "text") show_text_ = true;
@@ -180,6 +175,8 @@ namespace Demo
     void DemoApp::resetWorld()
     {
         ECS::World &world = engine.world();
+        model_viewer_.detach(engine);
+        pending_model_.clear();
         world.each<ECS::ScriptComponent>([this](ECS::Entity, ECS::ScriptComponent &c)
         {
             if (c.language == ECS::ScriptLanguage::Lua)
@@ -260,8 +257,7 @@ namespace Demo
         default: buildMinimalRig(); break;
         }
         registerLabBuffers();
-        selected_ = engine.world().findEntity("ResultGlb");
-        if (!selected_.valid()) selected_ = engine.world().findEntity("DamagedHelmet");
+        if (!engine.world().isAlive(selected_)) selected_ = engine.world().findEntity("DamagedHelmet");
         GEN_LOG_INFO("[Demo] scene '%s': %zu entities, %zu materials", sceneName(kind), engine.world().entityCount(),
                      engine.render().scene().materialCount());
     }
@@ -1032,26 +1028,12 @@ namespace Demo
         warm_ = world.findEntity("PointLightWarm");
         cool_ = world.findEntity("PointLightCool");
 
-        ECS::Entity result_entity = world.findEntity("ResultGlb");
-        if (!result_entity.valid() || !world.hasComponent<ECS::MeshComponent>(result_entity))
-        {
-            std::string glb_path = asset("models/result.glb");
-            if (!ResourceIO::fileExists(glb_path)) glb_path = "/Users/bytedance/Downloads/result.glb";
-            if (result_entity.valid()) world.destroyEntity(result_entity);
-            result_entity = spawnFile(glb_path, "ResultGlb", Math::Vec3(0.0f, 0.6515f, 0.0f), 4.2f);
-            addLabel(result_entity, "result.glb (Cook-Torrance PBR + IBL)", 0.95f, Math::Color(1.0f, 0.92f, 0.55f));
-        }
-
-        if (result_entity.valid())
-        {
-            selected_ = result_entity;
-            if (Render::MaterialPtr mat = entityMaterial(result_entity))
-            {
-                material_index_ = mat->index;
-                scroll_to_material_ = true;
-            }
-            if (preview_meshes_.size() >= 5) preview_mesh_ = 4;
-        }
+        show_model_ = true;
+        show_engine_ = false;
+        refreshModelList();
+        pending_model_ = !model_viewer_.path().empty() ? model_viewer_.path() :
+                         (!options.model.empty() ? options.model : asset("models/result.glb"));
+        applyPendingModel();
     }
 
     void DemoApp::updateMedia(float dt)
@@ -1133,6 +1115,16 @@ namespace Demo
     void DemoApp::tick(float dt)
     {
         applyPendingScene();
+        if (scene_ == SceneKind::ResultGlb)
+        {
+            for (const auto &path : engine.input().droppedFiles())
+            {
+                if (ModelViewer::accepts(path)) pending_model_ = path;
+                else model_status_ = "Drop a .glb or .gltf file.";
+                show_model_ = true;
+            }
+            applyPendingModel();
+        }
         if (options.tour) tourStep(dt);
         time_ += dt;
         if (preview_rotate_) preview_yaw_ += 0.6f * dt;
@@ -1348,14 +1340,12 @@ namespace Demo
         if (!mesh) mesh = preview_meshes_[0];
 
         Render::CommandBuffer &cb = *preview_cb_;
-        const float dist = preview_mesh_ == 3 ? 2.9f : preview_mesh_ == 4 ? 2.5f : 3.0f;
+        const float dist = preview_mesh_ == 3 ? 2.9f : 3.0f;
         cb.setRenderTarget(preview_hdr_);
         cb.clearRenderTarget(true, Math::Color(0.06f, 0.065f, 0.08f, 1.0f), true);
         cb.setCamera(Math::Vec3(0.0f, 0.5f, dist), Math::Vec3(0.0f), 38.0f, 0.05f, 50.0f);
         if (preview_sky_) cb.drawSkybox();
-        const float scale = preview_mesh_ == 4 ? 2.0f : 1.0f;
-        Math::Mat4 model = Math::Mat4::fromQuat(Math::Quat::fromAxisAngle(Math::Vec3(0, 1, 0), preview_yaw_)) *
-                           Math::Mat4::scale(Math::Vec3(scale));
+        Math::Mat4 model = Math::Mat4::fromQuat(Math::Quat::fromAxisAngle(Math::Vec3(0, 1, 0), preview_yaw_));
         for (uint32_t gm : mesh->gpu_meshes) cb.drawMesh(gm, model, mat);
         cb.blit(Render::RenderTargetId::of(preview_hdr_), Render::RenderTargetId::of(preview_ldr_));
     }

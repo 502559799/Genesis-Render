@@ -272,8 +272,12 @@ namespace Genesis
             stats_.spheres = (uint32_t)spheres_.size();
             stats_.hardware_ray_tracing = hardware_rt_;
 
-            const bool gpu_ok = compute_ && compute_->supportsHardwareCompute() &&
-                                ensureResources(settings) && traceGPU(camera, settings);
+            // The CPU fallback still needs a presentation texture and sampler.
+            // Allocate/resize these even on OpenGL 4.1 without compute support.
+            const bool resources_ready = ensureResources(settings);
+            if (!output_texture_ || !sampler_) return false;
+            const bool gpu_ok = resources_ready && compute_ && compute_->supportsHardwareCompute() &&
+                                traceGPU(camera, settings);
             if (!gpu_ok)
             {
                 traceCPU(camera, settings);

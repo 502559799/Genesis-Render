@@ -48,8 +48,8 @@ namespace
     {
         std::printf(
             "usage: genesis_demo [--backend gl|vulkan|metal] [--scene NAME] [--package FILE.gpkg]\n"
-            "                    [--script file.lua|file.js]\n"
-            "                    [--lab material|commandbuffer|custom|text|inspector|physics|gaussian|package|game|animation|raytracing|media|codec|apis]\n"
+            "                    [--script file.lua|file.js] [--model FILE.glb|FILE.gltf]\n"
+            "                    [--lab model|material|commandbuffer|custom|text|inspector|physics|gaussian|package|game|animation|raytracing|media|codec|apis]\n"
             "                    [--headless] [--frames N] [--screenshot out.png] [--showcase DIR]\n"
             "                    [--width W] [--height H] [--validation] [--no-ui] [--no-script]\n"
             "                    [--asset-dir DIR] [--selftest] [--tour] [--record DIR [--record-fps F]]\n"
@@ -64,7 +64,7 @@ namespace
             "           animation      2D sprite sheets + 3D compute vertex animation\n"
             "           raytracing     GPU compute ray tracer page\n"
             "           media          libavcodec video + SDL audio playback\n"
-            "           result         result.glb PBR + IBL showcase scene\n"
+            "           result         GLB PBR viewer + four reference spheres (default)\n"
             "           empty          camera, sun and sky only\n"
             "  --showcase DIR  headless: render labelled PNGs that each isolate one capability\n");
     }
@@ -96,6 +96,7 @@ namespace
             else if (a == "--asset-dir") o.asset_dir = next(GENESIS_ASSET_DIR);
             else if (a == "--script") o.script = next("");
             else if (a == "--package") o.package = next("");
+            else if (a == "--model") o.model = next("");
             else if (a == "--lab") o.lab = next("");
             else if (a == "--selftest") o.selftest = true;
             else if (a == "--tour") o.tour = true;
@@ -360,6 +361,7 @@ namespace
             struct ModelShot { const char *file; const char *name; float scale; Math::Vec3 cam; };
             const ModelShot shots[] = {
                 {"models/result.glb", "model_glb_result", 2.2f, Math::Vec3(1.8f, 1.0f, 2.6f)},
+                {"models/result (1).glb", "model_glb_result_1", 2.2f, Math::Vec3(1.8f, 1.0f, 2.6f)},
                 {"models/DamagedHelmet.glb", "model_glb_damaged_helmet", 1.0f, Math::Vec3(0, 0.1f, 3.2f)},
                 {"models/genesis_sphere.glb", "model_glb_sphere", 1.0f, Math::Vec3(0, 0.2f, 3.4f)},
                 {"models/genesis_test_cube.fbx", "model_fbx_cube", 1.6f, Math::Vec3(1.4f, 1.1f, 2.6f)},

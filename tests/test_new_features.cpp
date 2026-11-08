@@ -458,6 +458,11 @@ TEST_GPU(raytracing, gpu_trace_to_texture)
         CHECK(rt.stats().gpu);
         CHECK(rt.backendName().find("CPU") == std::string::npos);
     }
+    settings.width = 48;
+    settings.height = 32;
+    CHECK(rt.trace(camera, settings));
+    CHECK(rt.outputTexture() != nullptr);
+    CHECK(rt.pixels().size() == (size_t)48 * 32 * 4);
 }
 
 //======================================================================

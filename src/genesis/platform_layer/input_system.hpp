@@ -14,6 +14,7 @@
 #include <SDL2/SDL.h>
 
 #include <string>
+#include <vector>
 
 namespace Genesis
 {
@@ -67,6 +68,7 @@ namespace Genesis
 
             // Text input (forwarded to ImGui / editor fields)
             const std::string &textInput() const { return text_input_; }
+            const std::vector<std::string> &droppedFiles() const { return dropped_files_; }
 
         private:
             struct KeyState
@@ -84,6 +86,7 @@ namespace Genesis
             float wheel_delta_ = 0.0f;
             bool any_key_pressed_ = false;
             std::string text_input_;
+            std::vector<std::string> dropped_files_;
         };
 
     } // namespace Platform

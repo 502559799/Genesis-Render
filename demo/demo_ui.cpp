@@ -112,6 +112,7 @@ namespace Demo
         if (show_render_) drawRenderPanel();
         if (show_inspector_) drawInspectorPanel();
         if (show_material_) drawMaterialPanel();
+        if (show_model_) drawModelPanel();
         if (show_cb_) drawCommandBufferPanel();
         if (show_text_) drawTextPanel();
         if (show_physics_) drawPhysicsPanel();
@@ -137,7 +138,7 @@ namespace Demo
                                     "Physics playground", "Cascade mini-game (package)", "Gaussian splat viewer",
                                     "Package scene (.gpkg)", "Animation lab (2D sprite + 3D compute)",
                                     "Ray tracing (compute)", "Media player (libavcodec)",
-                                    "Result GLB PBR (result.glb)", "Empty"};
+                                    "GLB PBR viewer", "Empty"};
             for (uint32_t i = 0; i < (uint32_t)SceneKind::Count; ++i)
                 if (ImGui::MenuItem(labels[i], nullptr, scene_ == (SceneKind)i)) pending_scene_ = (SceneKind)i;
             ImGui::Separator();
@@ -150,6 +151,7 @@ namespace Demo
             ImGui::MenuItem("Render settings", nullptr, &show_render_);
             ImGui::MenuItem("Hierarchy / Inspector", nullptr, &show_inspector_);
             ImGui::MenuItem("Material editor", nullptr, &show_material_);
+            ImGui::MenuItem("GLB model / Transform", nullptr, &show_model_);
             ImGui::MenuItem("CommandBuffer lab", nullptr, &show_cb_);
             ImGui::MenuItem("SDF text lab", nullptr, &show_text_);
             ImGui::MenuItem("Physics lab", nullptr, &show_physics_);
@@ -438,9 +440,9 @@ namespace Demo
         UI::image(preview_ldr_, pw, pw);
         ImGui::SameLine();
         ImGui::BeginGroup();
-        const char *meshes[] = {"sphere", "box", "torus", "helmet", "result"};
+        const char *meshes[] = {"sphere", "box", "torus", "helmet"};
         ImGui::SetNextItemWidth(90);
-        ImGui::Combo("##mesh", &preview_mesh_, meshes, (int)std::min<size_t>(5, preview_meshes_.size()));
+        ImGui::Combo("##mesh", &preview_mesh_, meshes, 4);
         ImGui::Checkbox("rotate", &preview_rotate_);
         ImGui::Checkbox("sky", &preview_sky_);
         ImGui::EndGroup();
@@ -1189,6 +1191,50 @@ namespace Demo
                 selected_ = ECS::nullEntity();
             }
             frames(3);
+        }
+        // Exercise real ImGui DragFloat widgets without depending on a desktop
+        // automation service being able to deliver events to SDL. Fixed panel
+        // coordinates are intentional: this also catches accidental clipping
+        // or layout changes that make the main transform controls unreachable.
+        if (options.enable_ui)
+        {
+            loadScene(SceneKind::ResultGlb);
+            model_status_ = "Loaded " + ResourceIO::pathFilename(model_viewer_.path());
+            ImGuiIO &io = ImGui::GetIO();
+            auto uiFrame = [&](float x, float y, bool down)
+            {
+                io.MousePos = ImVec2(x, y);
+                io.MouseDown[0] = down;
+                io.DeltaTime = 1.0f / 60.0f;
+                ImGui::NewFrame();
+                ImGui::SetNextWindowFocus();
+                drawModelPanel();
+                ImGui::Render();
+            };
+            auto drag = [&](float x, float y, float dx)
+            {
+                uiFrame(x, y, false);
+                uiFrame(x, y, true);
+                uiFrame(x + dx, y, true);
+                uiFrame(x + dx, y, false);
+            };
+            uiFrame(70, 362, false);
+            uiFrame(70, 362, false);
+            if (auto *t = engine.world().getComponent<ECS::TransformComponent>(model_viewer_.target()))
+            {
+                const auto before = *t;
+                drag(70, 362, 80);   // position X
+                drag(180, 406, 50);  // rotation Y
+                drag(180, 476, 40);  // uniform scale
+                if (t->position.x <= before.position.x ||
+                    std::fabs(t->eulerAnglesDegrees().y - before.eulerAnglesDegrees().y) < 1.0f ||
+                    t->scale.x <= before.scale.x || !t->local_dirty)
+                    GEN_LOG_ERROR("[selftest] model Transform drag controls failed");
+                else GEN_LOG_INFO("[selftest] model Transform position / rotation / scale drags passed");
+                model_viewer_.resetTransform(engine);
+            }
+            else GEN_LOG_ERROR("[selftest] model target missing");
+            frames(2);
         }
         int errors = (int)(Logger::instance().errorCount() - errors_before);
         if (engine.hasScript()) errors += (int)engine.script().errorCount();

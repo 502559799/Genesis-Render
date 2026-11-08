@@ -20,6 +20,7 @@
 #include "api/encoder_decoder_api.hpp"
 #include "api/ray_tracing_api.hpp"
 #include "media/media_player.hpp"
+#include "model_viewer.hpp"
 #include "engine/engine.hpp"
 #include "reflection/engine_bindings.hpp"
 #include "renderer/command_buffer.hpp"
@@ -51,7 +52,7 @@ namespace Demo
         Animation,         // 2D sprite + 3D compute vertex animation
         RayTracing,        // GPU compute ray tracer page
         Media,             // libav* video + audio playback
-        ResultGlb,         // result.glb PBR showcase scene
+        ResultGlb,         // single GLB target + four PBR reference spheres
         Empty,
         Count
     };
@@ -74,6 +75,7 @@ namespace Demo
         SceneKind scene = SceneKind::ResultGlb;
         std::string script; // extra script file attached as a script entity (.lua / .js)
         std::string package; // .gpkg loaded by --scene package / game
+        std::string model;   // initial GLB/glTF for the PBR viewer
         std::string lab;    // pre-enabled lab: material | commandbuffer | custom | text | physics | gaussian | package
         bool selftest = false;
         bool tour = false;        // scripted feature walkthrough (camera, material edits, pipelines, scenes)
@@ -112,6 +114,8 @@ namespace Demo
         void buildRayTracingScene();
         void buildMediaScene();
         void buildResultGlbScene();
+        void refreshModelList();
+        void applyPendingModel();
         bool loadPackage(const std::string &path, std::string *error = nullptr);
         void buildFromActivePackage();
         void recordPhysicsDebug();
@@ -141,6 +145,7 @@ namespace Demo
         void drawRenderPanel();
         void drawInspectorPanel();
         void drawMaterialPanel();
+        void drawModelPanel();
         void drawCommandBufferPanel();
         void drawTextPanel();
         void drawPhysicsPanel();
@@ -181,6 +186,7 @@ namespace Demo
         bool show_render_ = false;
         bool show_inspector_ = false;
         bool show_material_ = false;
+        bool show_model_ = false;
         bool show_cb_ = false;
         bool show_text_ = false;
         bool show_physics_ = false;
@@ -195,6 +201,17 @@ namespace Demo
         bool show_console_ = false;
         bool show_log_ = false;
         bool show_help_ = false;
+
+        ModelViewer model_viewer_;
+        std::vector<std::string> model_files_;
+        std::string pending_model_;
+        std::string model_status_;
+        char model_path_[4096] = "";
+        char model_directory_[4096] = "";
+        bool model_uniform_scale_ = true;
+        bool model_auto_frame_ = true;
+        Math::Vec3 model_euler_ = Math::Vec3(0.0f);
+        Math::Quat model_ui_rotation_ = Math::Quat::identity();
 
         // Material editor
         int material_index_ = -1;

@@ -145,6 +145,11 @@ namespace Genesis
                 case SDL_APP_LOWMEMORY:
                     should_close_ = true;
                     break;
+                case SDL_DROPFILE:
+                case SDL_DROPTEXT:
+                    // Filters copy the payload; SDL transfers its ownership to us.
+                    SDL_free(event.drop.file);
+                    break;
                 default:
                     break;
                 }

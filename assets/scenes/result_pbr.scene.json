@@ -1,5 +1,5 @@
 {
-  "name": "Result GLB PBR Showcase",
+  "name": "GLB PBR Viewer Environment",
   "render": {
     "tonemap": "aces",
     "exposure": 1.25,
@@ -74,7 +74,7 @@
     {
       "name": "MainCamera",
       "transform": {
-        "position": [2.8, 1.8, 4.2]
+        "position": [0.0, 2.0, 5.4]
       },
       "components": {
         "camera": {
@@ -84,9 +84,9 @@
         },
         "controller": {
           "mode": "orbit",
-          "target": [0.0, 0.68, 0.0],
-          "distance": 4.8,
-          "yaw": 32.0,
+          "target": [0.0, 0.62, -0.1],
+          "distance": 5.5,
+          "yaw": 0.0,
           "pitch": 16.0
         }
       }
@@ -107,13 +107,13 @@
     {
       "name": "PointLightWarm",
       "transform": {
-        "position": [2.6, 1.8, 2.2]
+        "position": [3.2, 1.8, 2.4]
       },
       "components": {
         "light": {
           "type": "point",
           "intensity": 14.0,
-          "range": 12.0,
+          "range": 14.0,
           "color": [1.0, 0.58, 0.28, 1.0]
         }
       }
@@ -121,13 +121,13 @@
     {
       "name": "PointLightCool",
       "transform": {
-        "position": [-2.8, 1.5, -2.0]
+        "position": [-3.2, 1.6, 2.2]
       },
       "components": {
         "light": {
           "type": "point",
           "intensity": 12.0,
-          "range": 12.0,
+          "range": 14.0,
           "color": [0.35, 0.68, 1.0, 1.0]
         }
       }
@@ -144,29 +144,9 @@
       "material": "ShowroomGround"
     },
     {
-      "name": "ResultGlb",
-      "transform": {
-        "position": [0.0, 0.6515, 0.0],
-        "scale": [4.2, 4.2, 4.2]
-      },
-      "mesh": {
-        "model": "models/result.glb"
-      },
-      "components": {
-        "text": {
-          "text": "result.glb (Cook-Torrance PBR + IBL)",
-          "size": 0.18,
-          "offset": [0.0, 0.95, 0.0],
-          "color": [1.0, 0.92, 0.55, 1.0],
-          "outline": 0.18,
-          "outline_color": [0.0, 0.0, 0.0, 0.85]
-        }
-      }
-    },
-    {
       "name": "RefSphereChrome",
       "transform": {
-        "position": [-2.1, 0.45, -1.2]
+        "position": [-2.1, 0.45, -2.4]
       },
       "mesh": {
         "kind": "sphere",
@@ -187,7 +167,7 @@
     {
       "name": "RefSphereGold",
       "transform": {
-        "position": [-2.1, 0.45, 0.2]
+        "position": [-0.7, 0.45, -2.7]
       },
       "mesh": {
         "kind": "sphere",
@@ -208,7 +188,7 @@
     {
       "name": "RefSphereRed",
       "transform": {
-        "position": [2.1, 0.45, -1.2]
+        "position": [0.7, 0.45, -2.7]
       },
       "mesh": {
         "kind": "sphere",
@@ -229,7 +209,7 @@
     {
       "name": "RefSphereCeramic",
       "transform": {
-        "position": [2.1, 0.45, 0.2]
+        "position": [2.1, 0.45, -2.4]
       },
       "mesh": {
         "kind": "sphere",

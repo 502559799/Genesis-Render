@@ -119,6 +119,7 @@ namespace Genesis
             for (auto &kv : cache_)
                 if (kv.second.texture) device_->destroyTexture(kv.second.texture);
             cache_.clear();
+            embedded_sources_.clear();
             white_ = black_ = normal_ = grey_ = black_cube_ = GpuTexture();
         }
 
@@ -152,13 +153,16 @@ namespace Genesis
             return sampler;
         }
 
-        GpuTexture TextureCache::createFromImage(const ImageData &image, const std::string &key, bool srgb, bool mipmap)
+        GpuTexture TextureCache::createFromImage(const ImageData &image, const std::string &source_key, bool srgb, bool mipmap)
         {
+            const std::string key = source_key + (srgb ? ":srgb" : ":linear") + (mipmap ? ":mips" : ":single");
             auto it = cache_.find(key);
             if (it != cache_.end()) return it->second;
 
             GpuTexture out;
-            out.key = key;
+            // Public source identity is used by Material::setTexture to detect
+            // fallback textures; color space belongs only to the cache key.
+            out.key = source_key;
             out.width = image.width;
             out.height = image.height;
             out.srgb = srgb;
@@ -217,7 +221,7 @@ namespace Genesis
             if (!ref.path.empty())
             {
                 key = ref.path;
-                auto it = cache_.find(key);
+                auto it = cache_.find(key + (srgb ? ":srgb:mips" : ":linear:mips"));
                 if (it != cache_.end()) return it->second;
                 if (!image) image = ResourceIO::loadImage(ref.path);
             }
@@ -226,7 +230,7 @@ namespace Genesis
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "embedded:%p", (void *)image.get());
                 key = image->name.empty() ? buf : (image->name + ":" + buf);
-                auto it = cache_.find(key);
+                auto it = cache_.find(key + (srgb ? ":srgb:mips" : ":linear:mips"));
                 if (it != cache_.end()) return it->second;
             }
             if (!image)
@@ -234,7 +238,9 @@ namespace Genesis
                 GEN_LOG_WARN("[TextureCache] cannot resolve texture '%s' - using %s", ref.describe().c_str(), fallback_key.c_str());
                 return fallback();
             }
-            return createFromImage(*image, key, srgb, true);
+            GpuTexture texture = createFromImage(*image, key, srgb, true);
+            if (ref.embedded) embedded_sources_[texture.key] = ref.embedded;
+            return texture;
         }
 
         static GpuTexture makeSolid(TextureCache &cache, const char *key, uint8_t r, uint8_t g, uint8_t b, uint8_t a)

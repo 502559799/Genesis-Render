@@ -19,7 +19,7 @@ namespace Genesis
         for (auto &v : vertices)
         {
             v.normal[0] = v.normal[1] = 0.0f;
-            v.normal[2] = 1.0f;
+            v.normal[2] = 0.0f;
         }
         if (indices.empty())
         {

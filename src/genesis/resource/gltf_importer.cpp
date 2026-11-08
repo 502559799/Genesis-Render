@@ -119,7 +119,11 @@ namespace Genesis
             }
             result = cgltf_validate(data);
             if (result != cgltf_result_success)
-                GEN_LOG_WARN("[glTF] %s failed strict validation (result=%d) - continuing", path.c_str(), (int)result);
+            {
+                GEN_LOG_ERROR("[glTF] %s failed validation (result=%d)", path.c_str(), (int)result);
+                cgltf_free(data);
+                return nullptr;
+            }
 
             auto model = std::make_shared<ModelData>();
             model->name = data->scenes_count && data->scenes[0].name ? data->scenes[0].name : pathFilename(path);
@@ -146,7 +150,7 @@ namespace Genesis
                 m.emissive_factor = Math::Color(src.emissive_factor[0], src.emissive_factor[1], src.emissive_factor[2], 1.0f);
                 m.normal_scale = src.normal_texture.texture ? src.normal_texture.scale : 1.0f;
                 m.occlusion_strength = src.occlusion_texture.texture ? src.occlusion_texture.scale : 1.0f; // cgltf stores occlusion strength in `scale`
-                m.alpha_cutoff = src.alpha_cutoff > 0.0f ? src.alpha_cutoff : 0.5f;
+                m.alpha_cutoff = src.alpha_cutoff;
                 m.double_sided = src.double_sided;
                 switch (src.alpha_mode)
                 {
@@ -250,7 +254,6 @@ namespace Genesis
                         {
                             cgltf_float uv[2] = {0, 0};
                             cgltf_accessor_read_float(uv1_acc, v, uv, 2);
-                            out.uv0[0] = out.uv0[0]; // keep uv0
                             out.uv1[0] = uv[0]; out.uv1[1] = uv[1];
                         }
                         if (jnt_acc && wgt_acc)
@@ -300,8 +303,26 @@ namespace Genesis
                         for (size_t k = 0; k < md.indices.size(); ++k) md.indices[k] = (uint32_t)k;
                     }
 
-                    if (prim.type != cgltf_primitive_type_triangles)
-                        GEN_LOG_WARN("[glTF] primitive type %d is not triangles; importing as-is", (int)prim.type);
+                    // Every mesh pipeline is a triangle list. Expand strip/fan
+                    // topology instead of interpreting their indices as triangles.
+                    if (prim.type == cgltf_primitive_type_triangle_strip || prim.type == cgltf_primitive_type_triangle_fan)
+                    {
+                        std::vector<uint32_t> triangles;
+                        for (size_t k = 2; k < md.indices.size(); ++k)
+                        {
+                            uint32_t a = prim.type == cgltf_primitive_type_triangle_fan ? md.indices[0] : md.indices[k - 2];
+                            uint32_t b = md.indices[k - 1], c = md.indices[k];
+                            if (prim.type == cgltf_primitive_type_triangle_strip && (k & 1)) std::swap(a, b);
+                            if (a != b && b != c && a != c) triangles.insert(triangles.end(), {a, b, c});
+                        }
+                        md.indices = std::move(triangles);
+                    }
+                    else if (prim.type != cgltf_primitive_type_triangles)
+                    {
+                        GEN_LOG_WARN("[glTF] point/line primitive type %d skipped", (int)prim.type);
+                        continue;
+                    }
+                    if (md.indices.empty()) continue;
 
                     if (!md.has_normals) md.computeNormals();
                     if (!md.has_tangents) md.computeTangents();

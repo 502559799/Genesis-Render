@@ -415,6 +415,7 @@ if(GENESIS_BUILD_TESTS)
     file(GLOB GENESIS_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp)
     if(GENESIS_TEST_SOURCES)
         add_executable(GenesisTests ${GENESIS_TEST_SOURCES})
+        target_sources(GenesisTests PRIVATE demo/model_viewer.cpp)
         target_link_libraries(GenesisTests PRIVATE GenesisEngine)
         target_include_directories(GenesisTests PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src

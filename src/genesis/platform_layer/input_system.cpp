@@ -24,6 +24,7 @@ namespace Genesis
             wheel_delta_ = 0.0f;
             any_key_pressed_ = false;
             text_input_.clear();
+            dropped_files_.clear();
             ui_captured_mouse_this_frame = false;
         }
 
@@ -31,6 +32,9 @@ namespace Genesis
         {
             switch (event.type)
             {
+            case SDL_DROPFILE:
+                if (event.drop.file) dropped_files_.emplace_back(event.drop.file);
+                break;
             case SDL_KEYDOWN:
             {
                 SDL_Scancode code = event.key.keysym.scancode;

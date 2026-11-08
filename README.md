@@ -109,7 +109,9 @@ sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers xvfb   # 可选 Vulkan
 ## Demo
 
 ```bash
-./build/bin/genesis_demo --backend vulkan                      # C++ showcase 场景 + 材质编辑器
+./build/bin/genesis_demo --backend metal                       # GLB PBR 查看器（默认）
+./build/bin/genesis_demo --backend vulkan --scene showcase     # C++ showcase 场景 + 材质编辑器
+./build/bin/genesis_demo --backend metal --scene result --model '/path/to/new model.glb'
 ./build/bin/genesis_demo --backend metal --scene lua           # 完全由 Lua(RTTI) 搭建的场景
 ./build/bin/genesis_demo --backend gl --scene commandbuffer    # Lua CommandBuffer / 自定义管线示例
 ./build/bin/genesis_demo --lab custom                          # 打开 CommandBuffer 实验室并启用自定义管线
@@ -119,8 +121,9 @@ sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers xvfb   # 可选 Vulkan
 | 参数 | 说明 |
 |---|---|
 | `--backend gl\|vulkan\|metal` | 渲染后端（默认 gl；metal 仅 macOS） |
-| `--scene showcase\|lua\|commandbuffer\|physics\|game\|gaussian\|package\|animation\|raytracing\|media\|empty` | 初始场景（运行时可在菜单 Scene 切换） |
-| `--lab material\|commandbuffer\|custom\|text\|inspector\|physics\|gaussian\|package\|game\|animation\|raytracing\|media\|codec\|apis` | 启动时打开的功能面板 |
+| `--scene result\|showcase\|lua\|commandbuffer\|physics\|game\|gaussian\|package\|animation\|raytracing\|media\|empty` | 初始场景（默认 result；运行时可在菜单 Scene 切换） |
+| `--model FILE.glb\|FILE.gltf` | result 场景的初始模型；支持含空格的路径 |
+| `--lab model\|material\|commandbuffer\|custom\|text\|inspector\|physics\|gaussian\|package\|game\|animation\|raytracing\|media\|codec\|apis` | 启动时打开的功能面板 |
 | `--package FILE.gpkg` | 指定 `--scene package` / `game` 使用的资源包 |
 | `--script FILE.lua\|FILE.js` | 额外挂载一个脚本实体（按扩展名选择 Lua / JS） |
 | `--screenshot out.png` / `--frames N` | 渲染若干帧后截图退出（含 UI） |
@@ -133,6 +136,13 @@ sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers xvfb   # 可选 Vulkan
 
 界面入口（菜单 Windows）：**Engine**（后端/设备/统计/截图）、**Render settings**（反射生成）、**Hierarchy / Inspector**（反射编辑任意组件）、**Material editor**（材质库、实时预览、参数、纹理槽、指定给实体）、**CommandBuffer lab**（渲染到纹理的安防摄像头、后处理、自定义管线效果链/画中画/分屏）、**SDF text lab**（2D/3D 文字）、**Physics lab**（暂停/单步/重力/求解迭代、碰撞体调试、生成刚体、接触列表）、**Gaussian splat lab**（PLY 加载、尺寸/透明度/排序/裁剪 + 统计）、**Asset package browser**（运行时加载 `.gpkg`、查看 manifest/文件、载入场景）、**Cascade game**（小游戏入口/重开）、**Animation lab**（2D 序列帧 + 3D compute 顶点动画）、**Ray tracing lab**（GPU compute 光线追踪）、**Media player**（libavcodec 进程内视频 + SDL 音频播放）、**Encoder / Decoder lab**（硬件能力探测 + Raw/PNG/H.264 编解码）、**Engine APIs (4)**（四大 API 能力总览）、**Lua / JS console**（双语言示例片段）、Log、Controls。
 快捷键：拖拽左键环绕、滚轮缩放、F1 UI、F2 着色模型、F3 线框、F4 IBL、F5 自定义管线、F6 下一个后处理、ESC 退出。
+
+**GLB PBR 查看器**：保留四个材质参考球，场景中一次展示一个目标模型。
+在 **GLB model / Transform** 下拉框分别选择 `result.glb` / `result (1).glb`；
+使用 **Browse...**、路径输入或将文件拖入窗口来加载新的 GLB/glTF。
+拖拽 Position / Rotation / Scale 数值即可调整整个目标；支持统一缩放、自动取景和复位落地。
+加载失败保留当前模型，同一文件再次选择会复用资源并保留 Transform。
+操作说明、工程审查和回归结果见 [`docs/GLB_VIEWER.md`](docs/GLB_VIEWER.md)。
 
 ## 脚本示例（纯 RTTI）
 
